@@ -1,6 +1,6 @@
 # Context Loom — Specification (Draft)
 
-- **Status:** DRAFT v0.2 — for iteration, not implementation yet
+- **Status:** DRAFT — MVP gate for v0.1.0 defined (§11); full v1 surface still iterative
 - **Date:** 2026-09-12
 - **Repo:** `context-loom` (public, self-hosted)
 - **Stack:** PHP 8.4+, Symfony 8, `mcp/sdk` (official PHP MCP SDK, `mcp/sdk` ^0.8, Apache-2.0)
@@ -1032,7 +1032,45 @@ others. Spike in Phase 0 to confirm IDLE + proxy env + test connectivity.
 
 ---
 
-## 11. What we keep from `mcp-server` (as requirements, not code)
+## 11. MVP scope — the `v0.1.0` release gate
+
+**Why this section exists:** this is the exact definition of done for our first
+public release. `v0.1.0` is not "the whole spec" — it is the smallest slice that
+is genuinely useful to a stranger who pulls the image from Docker Hub. If any
+gate item is missing, we do **not** tag `v0.1.0`.
+
+**Version story:** v0.1.0 = MVP (this section). v0.2 adds the remaining generics
++ live streaming. v2.0 adds OAuth 2.1 proxy mode. v3.0 adds `requires_healthy`
+(parked). v4.0 multi-user. The full §7 surface is the v1 target, reached
+incrementally.
+
+### 11.1 The gate — must all be true for `v0.1.0`
+
+| # | Area | Requirement |
+|---|---|---|
+| 1 | Registry core | `registry/*.yaml` loaded at boot; static validation (hard) — invalid entry excluded, structured log, `config: invalid` in health; `requires:` env conditions; no-prefix naming (§4.5). |
+| 2 | Tool types | `internal`, `http`, `process` all first-class. `type: http` executor (D13): method, URL template (env+args), headers, `api_key`/`bearer`/`basic`/none, params, body; response → `OutputSpec`. PSR-18. |
+| 3 | MCP surface | `mcp/sdk` ^0.8 server over STDIO + streamable HTTP `/mcp`; every registry entry registered as a native tool; `contextloom_health` present. |
+| 4 | REST/OpenAPI | Full parity (D15): one route + one operation per entry, alias table, `GET /health`, API-key auth (same key as MCP). |
+| 5 | Providers shipped | **Notify** (ntfy + Discord) — port `mcp-server` behavior: level routing/fallback, chunking (Discord 4096), color/tag map. Plus **penny-track + vital-pulse as `type: http` registry entries** — the first real consumers, proving #2. |
+| 6 | Health & probing | Static probes on boot (hard excludes per §6.2). Background connectivity probes (async, timeout 3s, concurrency ≤4, never block boot; `PROBE_MODE`/`PROBE_INTERVAL`/`PROBE_TIMEOUT`/`PROBE_ON_BOOT`; per-entry `probe: none`). Single health surface (§7.5). |
+| 7 | CLI | `contextloom:validate` (CI-fast config check) and `contextloom:probe` functional. |
+| 8 | Stream-native core | `ToolRun`/`Chunk`/`StreamReader`/`StreamSink` exist; **block sink only** (consume stream at end → `CallToolResult`). No live client streaming in v0.1. |
+| 9 | Tests | PHPUnit green: registry load, condition filtering, arg validation, path derivation, HTTP runner (mocked PSR-18). CI gate. |
+| 10 | Packaging | Multi-stage Dockerfile (amd64+arm64), compose, `.env.example`, public README (quickstart + registry docs), LICENSE (follow `mcp/sdk` Apache-2.0 — confirm at packaging time), Gitea Actions CI (test → `docker buildx bake` → push). |
+| 11 | Release | Git tag `v0.1.0` → Docker Hub `digitaladapt/context-loom:latest` + `:0.1.0` (versions strip `v`, per our convention). Both arches. |
+
+### 11.2 Explicitly deferred (NOT in v0.1)
+
+- **Calendar + email providers** → v0.2 (CalDAV/IMAP parity with `mcp-server`: recurrence, timezone, dedupe, IDLE).
+- **Live streaming to the client** (progress sink, subprocess pipe, `StreamableToolResult`) → v0.2; architecture stays stream-native (§5).
+- **OAuth 2.1 proxy mode** → v2.0. Multi-user → v4.0.
+- **OTel exporter** → later (pattern only: PSR-3 structured logs in v0.1).
+- **`requires_healthy`** → parked v3.0 (§4.1/D9).
+
+---
+
+## 12. What we keep from `mcp-server` (as requirements, not code)
 
 - Registry YAML + `requires` condition mini-language.
 - Registry load resilience (bad file → skip, don't crash).
