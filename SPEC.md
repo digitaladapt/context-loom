@@ -16,7 +16,7 @@ the model instead of blocking.**
 
 The name is the argument: TaskWeaver decides *what* to do; Context Loom is the
 loom where the weaving actually happens. It supplies **context to the model**
-(`context-loom` = the context layer, literally the M in MCP) and it is the
+(`context-loom` = the context layer, literally the C in MCP) and it is the
 **pipe** through which tool output flows.
 
 It is a **generic, provider-based** server. It does not own any domain (no
@@ -78,6 +78,7 @@ This is a **public** project: public GitHub repo, public Docker Hub images
 
 ## 3. Architecture
 
+FIXME: folder structure is wrong.. we'll follow established standard for Symfony projects.
 ```
 context-loom/
 ├── bin/                       # entrypoints (console, serve)
@@ -152,6 +153,7 @@ context-loom/
 
 ### 4.1 Entry lifecycle
 
+FIXME: a tool with a valid configuration is always added to the tool definitions.. health status is for the health endpoint.
 ```
 YAML file ──▶ parse ──▶ static validation ──▶ [required config present?]
                                                      │
