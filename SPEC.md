@@ -138,7 +138,15 @@ same as the previous tree: `Domain` is pure, `Service` is application,
 ### 3.1 MCP transport
 
 - Use the official `mcp/sdk` server builder: `Mcp\Server\Server` + `Mcp\Server\Transport\StreamableHttpTransport`
-  (**primary** — `POST /mcp` + SSE) and `StdioTransport` (optional dev convenience).
+  (**primary** — `POST /mcp`, response may be `text/event-stream`) and `StdioTransport` (optional dev convenience).
+- **SSE vs Streamable HTTP — don't conflate them.** The *legacy* two-endpoint
+  HTTP+SSE transport (`GET /sse` + `POST /messages`, protocol 2024-11-05) was
+  deprecated in 2025-03-26 and replaced by **Streamable HTTP** (2025-03-26+, and
+  per the 2026-07-28 revision: no `Mcp-Session-Id`, no `initialize` handshake,
+  cross-call state travels as explicit tool args). SSE *itself* was not removed:
+  Streamable HTTP is a `POST /mcp` endpoint whose response body can be
+  `text/event-stream` — so saying "POST + SSE" is exactly Streamable HTTP, not
+  the old transport. We implement Streamable HTTP, never the legacy SSE pair.
 - **HTTP is the deployment transport.** Context Loom runs as its own container;
   TaskWeaver connects over the network (own container, same compose network or
   remote). STDIO is only viable when the client spawns the server as a subprocess
@@ -1016,12 +1024,18 @@ others. Spike in Phase 0 to confirm IDLE + proxy env + test connectivity.
   runner (with mocked PSR-18), port `mcp-server` unit-test ideas.
 
 **Phase 2 — Providers (the generics)**
-- Notify (ntfy, Discord) — simplest, ports directly from `mcp-server`.
+- Notify (ntfy, Discord) — simplest, ports directly from `mcp-server`. **In v0.1.**
 - Calendar (iCal read, CalDAV read/write via sabre) — heaviest, carry over
-  recurrence + timezone lessons.
+  recurrence + timezone lessons. **v0.2** (§11.2).
 - Email (IMAP read/write via `ImapClient` service + SMTP send). IMAP IDLE
   **worker per account** (`ImapIdleListener`, §5.3b/§9.3b) + event delivery to
-  TaskWeaver via the chosen transport from Open Q#2.
+  TaskWeaver via the chosen transport from Open Q#2. **v0.2** (§11.2).
+
+**Note on phase ↔ release mapping:** phases are build order, not release cuts.
+The §11 gate slices across them: **v0.1** = Phase 0 + Phase 1 + Notify from
+Phase 2 + the stream-native core/progress sink from Phase 3. Calendar + email
+stay Phase 2 (v0.2); OAuth/multi-user later; if upstream `StreamableToolResult`
+lands before Phase 3 finishes, we take it (open question #1).
 
 **Phase 3 — Streaming (the pipe)**
 - `ToolRun`/`Chunk` contract + `StreamReader` (line-buffered subprocess reading).
@@ -1052,10 +1066,10 @@ is genuinely useful to a stranger who pulls the image from Docker Hub. If any
 gate item is missing, we do **not** tag `v0.1.0`.
 
 **Version story:** v0.1.0 = MVP (this section): registry + tool types,
-HTTP-first MCP, calendar + notify + our services, live streaming
-(progress channel). v0.2 adds email (IMAP/SMTP) + remaining generics.
-v2.0 adds OAuth 2.1 proxy mode. v3.0 adds `requires_healthy` (parked).
-v4.0 multi-user. The full §7 surface is the v1 target, reached
+HTTP-first MCP, notify + our services, live streaming (progress channel).
+v0.2 adds calendar (CalDAV + iCal) + email (IMAP/SMTP) + remaining
+generics. v2.0 adds OAuth 2.1 proxy mode. v3.0 adds `requires_healthy`
+(parked). v4.0 multi-user. The full §7 surface is the v1 target, reached
 incrementally.
 
 ### 11.1 The gate — must all be true for `v0.1.0`
@@ -1064,9 +1078,9 @@ incrementally.
 |---|---|---|
 | 1 | Registry core | `registry/*.yaml` loaded at boot; static validation (hard) — invalid entry excluded, structured log, `config: invalid` in health; `requires:` env conditions; no-prefix naming (§4.5). |
 | 2 | Tool types | `internal`, `http`, `process` all first-class. `type: http` executor (D13): method, URL template (env+args), headers, `api_key`/`bearer`/`basic`/none, params, body; response → `OutputSpec`. PSR-18. |
-| 3 | MCP surface | **Streamable HTTP `/mcp` — primary, required.** `mcp/sdk` ^0.8 server over HTTP (POST + SSE); every registry entry registered as a native tool; `contextloom_health` present. STDIO is optional dev convenience only — not a gate item (§3.1). |
+| 3 | MCP surface | **Streamable HTTP `/mcp` — primary, required** (POST, `text/event-stream` response; NOT the legacy two-endpoint HTTP+SSE transport, deprecated 2025-03-26 — §3.1). `mcp/sdk` ^0.8 server over HTTP; every registry entry registered as a native tool; `contextloom_health` present. STDIO is optional dev convenience only — not a gate item (§3.1). |
 | 4 | REST/OpenAPI | Full parity (D15): one route + one operation per entry, alias table, `GET /health`, API-key auth (same key as MCP). |
-| 5 | Providers shipped | **Calendar** (CalDAV read/write + iCal read) — full §7.1 toolset with `mcp-server` parity: events + tasks, alarms, recurring expansion, timezone preservation, `(uid, start)` dedupe. **Notify** (ntfy + Discord): level routing/fallback, chunking (Discord 4096), color/tag map. Plus **penny-track + vital-pulse as `type: http` registry entries** — first real consumers, proving #2. |
+| 5 | Providers shipped | **Notify** (ntfy + Discord): level routing/fallback, chunking (Discord 4096), color/tag map. Plus **penny-track + vital-pulse as `type: http` registry entries** — first real consumers, proving #2. (Calendar is NOT in v0.1 — see §11.2; the §7.1 contract carries to v0.2.) |
 | 6 | Health & probing | Static probes on boot (hard excludes per §6.2). Background connectivity probes (async, timeout 3s, concurrency ≤4, never block boot; `PROBE_MODE`/`PROBE_INTERVAL`/`PROBE_TIMEOUT`/`PROBE_ON_BOOT`; per-entry `probe: none`). Single health surface (§7.5). |
 | 7 | CLI | `contextloom:validate` (CI-fast config check) and `contextloom:probe` functional. |
 | 8 | Streaming | Stream-native core (`ToolRun`/`Chunk`/`StreamReader`/`StreamSink`) + **live streaming end-to-end** for entries that declare it: progress sink via `ClientGateway::progress()` (progressToken-gated, debounced — SDK 0.8.x sanctioned channel, §5.2); block sink fallback for the rest. True `StreamableToolResult` still parked (not in SDK 0.8.x) — don't fake it. |
@@ -1076,6 +1090,7 @@ incrementally.
 
 ### 11.2 Explicitly deferred (NOT in v0.1)
 
+- **Calendar (CalDAV read/write + iCal read, full §7.1 toolset + `mcp-server` parity: events + tasks, alarms, recurring expansion, timezone preservation, `(uid, start)` dedupe)** → v0.2 — heaviest provider, carried over from `mcp-server`; get v0.1 working first, then add functionality.
 - **Email (IMAP + SMTP)** → v0.2 (list/read/send + IMAP IDLE event push — §5.3b/§9.3b).
 - **OAuth 2.1 proxy mode** → v2.0. Multi-user → v4.0.
 - **OTel exporter** → later (pattern only: PSR-3 structured logs in v0.1).
