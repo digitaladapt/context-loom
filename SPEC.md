@@ -78,50 +78,62 @@ This is a **public** project: public GitHub repo, public Docker Hub images
 
 ## 3. Architecture
 
-FIXME: folder structure is wrong.. we'll follow established standard for Symfony projects.
+**Folder structure (standard Symfony layout, PSR-4 `App\` — mirrors task-weaver).**
+
 ```
 context-loom/
-├── bin/                       # entrypoints (console, serve)
+├── bin/                       # entrypoints (console)
 ├── config/                    # Symfony config (services, packages)
+├── public/                    # front controller (serve via PHP-FPM/Caddy) or CLI-only
 ├── src/
-│   └── ContextLoom/
-│       ├── Domain/            # pure models, no I/O
-│       │   ├── RegistryEntry.php
-│       │   ├── InputSpec.php
-│       │   ├── OutputSpec.php
-│       │   ├── ProbeSpec.php
-│       │   ├── ProbeResult.php
-│       │   ├── ToolRun.php    # stream of Chunk
-│       │   └── Chunk.php
-│       ├── Application/
-│       │   ├── Registry.php           # load/validate registry YAML
-│       │   ├── Health/HealthRegistry.php  # soft probe state, cache
-│       │   ├── Executor/ToolExecutor.php # runs any entry -> ToolRun stream
-│       │   └── ToolNameFactory.php
-│       ├── Infrastructure/
-│       │   ├── Process/ProcessRunner.php        # subprocess + process-group kill
-│       │   ├── Process/StreamReader.php         # line/chunk reader with backpressure
-│       │   ├── Calendar/CalDavClient.php        # PROPFIND/REPORT (sabre/vobject)
-│       │   ├── Calendar/IcalClient.php          # fetch + parse ICS
-│       │   ├── Email/ImapClient.php             # read mail (pure-PHP IMAP client)
-│       │   ├── Email/SmtpClient.php             # send mail
-│       │   ├── Notify/NtfyClient.php
-│       │   ├── Notify/DiscordClient.php
-│       │   └── Probe/  # per-protocol connectivity probes
-│       ├── Mcp/
-│       │   ├── ContextLoomServer.php    # wires mcp/sdk, registers tools
-│       │   ├── ToolFactory.php          # RegistryEntry -> SDK tool (signature, schema)
-│       │   └── StreamSink.php           # ToolRun chunks -> CallToolResult / progress
-│       └── Console/
-│           ├── ValidateCommand.php      # static registry validation
-│           ├── ProbeCommand.php         # run connectivity probes now
-│           └── ServeCommand.php         # run the MCP server (stdio/http)
+│   ├── Controller/            # HTTP/REST controllers (OpenAPI surface, health)
+│   │   └── HealthController.php
+│   ├── Command/               # commands (validate, probe, serve)
+│   │   ├── ValidateCommand.php
+│   │   ├── ProbeCommand.php
+│   │   └── ServeCommand.php
+│   ├── Domain/                # pure models, no I/O
+│   │   ├── RegistryEntry.php
+│   │   ├── InputSpec.php
+│   │   ├── OutputSpec.php
+│   │   ├── ProbeSpec.php
+│   │   ├── ProbeResult.php
+│   │   ├── ToolRun.php        # stream of Chunk
+│   │   └── Chunk.php
+│   ├── Service/               # application services (wired in services.yaml)
+│   │   ├── Registry.php           # load/validate registry YAML
+│   │   ├── HealthRegistry.php     # soft probe state, cache
+│   │   ├── ToolExecutor.php       # runs any entry -> ToolRun stream
+│   │   └── ToolNameFactory.php    # entry -> MCP name + REST path
+│   ├── MCP/                   # MCP layer (mcp/sdk integration)
+│   │   ├── ContextLoomServer.php    # wires mcp/sdk, registers tools
+│   │   ├── ToolFactory.php          # RegistryEntry -> SDK tool (signature, schema)
+│   │   └── StreamSink.php           # ToolRun chunks -> CallToolResult / progress
+│   ├── Infrastructure/        # I/O adapters, protocol clients
+│   │   ├── Process/ProcessRunner.php        # subprocess + process-group kill
+│   │   ├── Process/StreamReader.php         # line/chunk reader with backpressure
+│   │   ├── Calendar/CalDavClient.php        # PROPFIND/REPORT (sabre/vobject)
+│   │   ├── Calendar/IcalClient.php          # fetch + parse ICS
+│   │   ├── Email/ImapClient.php             # read mail (pure-PHP IMAP client)
+│   │   ├── Email/SmtpClient.php             # send mail
+│   │   ├── Email/ImapIdleListener.php       # IMAP IDLE worker (event source, D23)
+│   │   ├── Notify/NtfyClient.php
+│   │   ├── Notify/DiscordClient.php
+│   │   └── Probe/  # per-protocol connectivity probes
+│   └── Kernel.php             # Symfony kernel (task-weaver style, or FrameworkBundle)
 ├── registry/                  # declarative tool definitions (YAML)
+├── templates/                 # if any web UI (optional)
 ├── tests/
 ├── Dockerfile                 # multi-arch (amd64+arm64), like task-weaver
 ├── .env.example
 └── composer.json
 ```
+
+**Why this shape:** `App\` PSR-4 (not nested `ContextLoom\` namespace) is the Symfony
+standard and matches task-weaver — controllers, commands, services, entities,
+MCP, EventSubscriber in their conventional homes. Layer boundaries stay the
+same as the previous tree: `Domain` is pure, `Service` is application,
+`Infrastructure` is I/O, `MCP` is the wire adapter, `Controller` is REST.
 
 ### 3.1 MCP transport
 
@@ -153,19 +165,20 @@ context-loom/
 
 ### 4.1 Entry lifecycle
 
-FIXME: a tool with a valid configuration is always added to the tool definitions.. health status is for the health endpoint.
 ```
 YAML file ──▶ parse ──▶ static validation ──▶ [required config present?]
                                                      │
-                                      yes ──▶ registry holds a "live" entry
+                                      yes ──▶ registered (tool definition available)
                                                      │
                                                      └─ no ──▶ excluded (logged, never registered)
-        │
-        └── at boot (optional, non-blocking): connectivity probe
+
+(registration is config-only. Health is never a registration gate.)
+
+        at boot (optional, non-blocking): connectivity probe
                     │
-                    ├── probe ok      → status: ok
-                    ├── probe fail    → status: degraded/down (tool still registered by default)
-                    └── probe skipped → status: unknown
+                    ├── probe ok      → health: ok
+                    ├── probe fail    → health: degraded/down (tool still registered)
+                    └── probe skipped → health: unknown
 ```
 
 Rules:
@@ -174,17 +187,23 @@ Rules:
   required env, import errors → entry is **excluded** and the server still boots.
   (Matches `mcp-server`'s "skip invalid registry file, stay healthy" behavior,
   plus we add a CLI/validate command for pre-deploy checks.)
-- **Connectivity probing is a soft gate.** It never prevents boot. It feeds a
-  `HealthRegistry` that can, per entry, choose to hide the tool (`requires_healthy`)
-  or merely annotate it (`offered but degraded`).
-- **Probing is cached and re-run on a schedule** (not just once at boot), so a
-  service that comes back online re-advertises without a restart.
+- **Anything with valid config is registered — always.** A tool is in the
+  definition list if (and only if) its configuration is valid. Health status is
+  **not** a registration concern; it is reported by the health endpoint and the
+  `contextloom_health` tool only. There is no `requires_healthy` hide-behavior.
+- **Connectivity probing is a soft, post-registration concern.** It never affects
+  registration or definitions. It feeds a `HealthRegistry` consumed by
+  `/health` and `contextloom_health` (see §6.4). A temporarily down backend
+  means calls return a clean, structured "backend unreachable (`down`)" tool
+  error — never a missing tool.
+- **Probing is cached and re-run on a schedule** (not just once at boot), so the
+  health endpoint stays current without a restart.
 - **Tool definitions are cached client-side.** The LLM fetches `tools/list` once
-  and does not re-read definitions between calls. Therefore **live health state
-  must never be smuggled into tool descriptions** (that would be stale within
-  seconds and actively misleading). Health is surfaced only through a dedicated
-  `contextloom_health` tool (see §6.4) and (v3.0, optional) explicit status
-  updates via TaskWeaver v3.0 / MCP list-changed notifications.
+  and does not re-read definitions between calls. Because health is *not* in
+  definitions (and registration doesn't change at runtime), **definitions are
+  stable for the life of a config** — no drift between pulls. Health is surfaced
+  only through the health endpoint and a dedicated `contextloom_health` tool
+  (see §6.4).
 
 ### 4.2 Entry schema (draft)
 
@@ -582,14 +601,16 @@ static-only unless the entry author explicitly declares a `--version` probe.
   unreadable; IMAP login OK, mailbox list partial).
 - `down` — probe failed (timeout, auth rejected, connection refused).
 
-Registration policy (decided): by default all four states stay **registered** —
-a temporarily down backend means calls return a clean, structured "backend
-unreachable (`down`)" tool error, never a missing tool. Per-entry opt-in
-`requires_healthy: true` flips to hide-if-not-ok.
+Registration policy: **all four states stay registered — always.** A tool is
+registered purely on config validity (see §4.1). Health never hides or removes a
+tool; a temporarily down backend means calls return a clean, structured
+"backend unreachable (`down`)" tool error, never a missing tool. There is no
+`requires_healthy` hide-behavior — health is for `/health` and
+`contextloom_health` only.
 
-**How the model learns about health (revised):** because tool definitions are
-cached by the client, we do **not** mutate tool descriptions with health status
-(that would be stale almost immediately — the model won't re-fetch). Instead:
+**How the model learns about health:** because tool definitions are cached by
+the client, we do **not** mutate tool descriptions with health status (that
+would be stale almost immediately — the model won't re-fetch). Instead:
 
 - The **`contextloom_health` tool** reports live state per domain (status, last
   probe, error, config presence — no secrets) on every call. The model can check
@@ -704,7 +725,7 @@ streaming/probe extensions above. **This is where "the pipe" earns its keep.**
 | D6 | Process-group kill | Feasible (`posix`/`pcntl`/`sockets` present in runtime image) — required. |
 | D7 | Verb-first naming | Confirmed: `{verb}_{resource}` order — verbs first because LLMs read natural language (`calendar_list_events`, not `calendar_events_list`). Now folded into D1/D12 (no prefix). |
 | D8 | OpenAPI + MCP | **Both** in the official support matrix: MCP streamable HTTP + OpenAPI/REST, same registry entry as single source. Phase 1 includes the OpenAPI surface. |
-| D9 | `requires_healthy` default | **Registered by default** — tool definitions must not change on reboot when config hasn't changed. Bad config = server-level structured log + health endpoint reports `config: invalid` with reason. |
+| D9 | Registration vs health | **Registration is config-only.** A tool with a valid config is always registered — no `requires_healthy` hide-behavior. Health status lives in the health endpoint + `contextloom_health` tool only. Bad config = server-level structured log + health endpoint reports `config: invalid` with reason. |
 | D10 | Health surface | **Single** `contextloom_health` (MCP) / `GET /health` (REST), per-provider detail in the response. No per-domain health tools. |
 | D11 | OpenTelemetry | Pattern now (structured PSR-3 + manual spans), exporter later (optional dependency, env-gated). No OTel infra required for v1. See §9.1. |
 | D12 | No `cmd_` prefix | Dropped. Registry entries are native tools: `vital_pulse_list_records`, `run_backup`. Naming = `{domain}_{verb}_{resource}`; REST path derives from name. See §4.5. |
@@ -1000,9 +1021,9 @@ others. Spike in Phase 0 to confirm IDLE + proxy env + test connectivity.
 
 **Phase 4 — Probing & health**
 - `ProbeSpec` implementations per protocol; background probe runner with
-  interval/cache; `HealthRegistry`; `requires_healthy` opt-in;
-  `contextloom_health` tool; OTel structured events (or stderr, per §9.1 —
-  pattern now, exporter later).
+  interval/cache; `HealthRegistry`; `contextloom_health` tool; OTel structured
+  events (or stderr, per §9.1 — pattern now, exporter later). (No
+  `requires_healthy` — registration is config-only, §4.1/D9.)
 
 **Phase 5 — Packaging & release**
 - Dockerfile (multi-stage, amd64+arm64), compose, CI (GitHub Actions/Gitea
