@@ -130,8 +130,7 @@ context-loom/
   registry entry is the single source of truth for tool definitions and REST
   endpoints. `context-loom serve` runs one process serving MCP (`/mcp`), REST
   (`/api/{prefix}/{resource}`), and health (`/health`) under one router/port
-  (open question #5 confirms shape). REST is a first-class citizen from Phase 1,
-  not an afterthought.
+  (D18). REST is a first-class citizen from Phase 1, not an afterthought.
 - Tool registration is **declarative**: each `RegistryEntry` is converted into an
   SDK tool (`Mcp\Capability\Registry\ToolReference` + `ToolHandlerInterface`,
   or the `#[McpTool]` attribute for hand-written tools) whose input schema is
@@ -446,7 +445,54 @@ Because the pipeline is `ToolRun → (block | progress | future streamable)`,
 "streaming all the way through" is an architecture property, not a per-tool
 feature that has to be retrofitted later.
 
-### 5.3 Streaming a subprocess (the pipe)
+### 5.3a What the SDK does and doesn't stream (clarified this round)
+
+Everything above is verified against `mcp/sdk` 0.8.x. In one table:
+
+| SDK cap | What it does | For us |
+|---|---|---|
+| `StreamableHttpTransport` | POST `/mcp` + SSE response stream + session | ✅ the transport |
+| `ClientGateway::progress()` | progress frames on an active request | ✅ v1 liveness |
+| `Protocol::sendNotification()` | server→client notifications on a session | ✅ future, once our client consumes |
+| `CallbackStream` | PSR-7 stream that echoes+flushes for SSE | low-level, useful for a raw REST stream |
+| `StreamableToolResult` | **tool result itself streams** | ❌ not in SDK 0.8.x — parked (D5) |
+
+So: "the SDK has streaming" is true for the *transport* and for *progress*
+notifications, but **not** for the *tool result* — that's the missing piece and
+it's upstream (SEP). We architect for it, don't fake it.
+
+### 5.3b Inbound events / push (the "callback" shape)
+
+**The event model is separate from tool streaming.** A tool is *invoked by the
+model*; an **event** watches a resource and *pushes* when it changes,
+without the model asking. For v1, we define one event source (D23):
+
+- **Email arrival (IMAP IDLE)** — an `internal` registry entry with a
+  background worker (`ImapIdleListener`). On new mail, it builds a structured
+  event payload and **delivers it to an outbound handler**.
+
+The outbound handler is **not** an MCP notification (TaskWeaver's client is
+request/response only — verified). It is one of the callback transports in
+**Open Q#2** (TaskWeaver webhook / task creation / long-poll), with the goal
+being TaskWeaver *begins acting* near-real-time.
+
+```
+┌─────────────┐   IMAP IDLE    ┌──────────────────┐   outbound HTTP   ┌──────────┐
+│  mail server │ ──────────────▶ │ context-loom      │ ────────────────▶ │ TaskWeaver │
+│              │                │ ImapIdleListener  │   (webhook/callback)│           │
+└─────────────┘                └──────────────────┘                     └──────────┘
+```
+
+The event entry is `type: internal` (it's our code + IDLE), and it is **not
+callable as a tool** — it's a push source. (A declarative `type: webhook`/`push`
+registry type is parked for later; `type: http` remains for *declared outbound
+REST calls to third parties*, D13.)
+
+This is intentionally *not* "server→client MCP notification" — that requires
+TaskWeaver to consume server→client notifications, which it doesn't yet. That's
+the future ideal, explicitly kept separate. See §9.3b.
+
+### 5.3c Streaming a subprocess (the pipe)
 
 - Start process with `proc_open` (or `Symfony Process`) **in its own process group**.
   PHP runtime image confirmed to have `posix` + `pcntl` + `sockets`.
@@ -668,6 +714,10 @@ streaming/probe extensions above. **This is where "the pipe" earns its keep.**
 | D18 | Serve shape | **Single process, single port** — `/mcp` + `/api` + `/health` under one router (Symfony HTTP kernel + SDK PSR-7 bridge). |
 | D19 | Multi-account | Single user for v1 (1 CalDAV + N iCal, 1 IMAP/SMTP). Multi-user per-account customization parked as v4.0 (OAuth + UI). Explicit non-goal now. |
 | D20 | Docker naming/versioning | Family conventions: `digitaladapt/context-loom`, `latest`/`{VERSION}`, amd64+arm64, `develop` tags on develop. Mirror task-weaver CI. |
+| D21 | Scopes | **Domain-level** for OAuth (`calendar:read`/`calendar:write`, `email:read`, `notify:send`...). Tool-level granularity is a later refinement; API-key mode is all-or-nothing. |
+| D22 | HTTP `auth: oauth_client_credentials` | **Future capacity** (not this round). `http` entries ship `none`/`api_key`/`bearer`/`basic` now; client-credentials flow will be added only when a real consumer needs it. No YAML schema change — it's additive. |
+| D23 | Inbound events (email → TaskWeaver) | **Email arrival is an `internal` registry tool that acts as a push/`notify` source.** It is *not* a manually-invoked tool. TaskWeaver's MCP client is request/response-only today (no notification consumer) — so v1 push must go over **TaskWeaver's own HTTP webhook/inbound surface**, not over MCP notifications. MCP `notifications/...` from server→client stays a future enhancement once TaskWeaver learns to consume them. |
+
 
 ### Still open
 
@@ -675,19 +725,113 @@ streaming/probe extensions above. **This is where "the pipe" earns its keep.**
    `StreamableToolResult`/SEP support, (b) propose it upstream ourselves, or (c)
    build a custom SSE/`CallbackStream` endpoint that serves raw chunk streams to
    MCP Apps / REST clients in the meantime? (v1 uses progress notifications
-   either way; this decides when "true" streaming lands.)
-2. **Scopes & permissions for tools** — when OAuth is on, does an MCP scope map
-   to a domain or a tool? (e.g. `calendar:read`/`calendar:write`, or per-tool).
-   For API-key mode it's all-or-nothing. Decide the scope granularity in §9.2
-   design pass (Phase 1 implementation detail; not a plan blocker).
-3. **IMAP idle → how it feeds streaming** — ImapEngine `idle()` is blocking and
-   must run in a worker loop. Do we use it for `email_wait_for_new` streaming
-   (poll + push) or keep polling instead? Architecture detail to spike in Phase 1.
-4. **HTTP `auth: oauth_client_credentials`** — needed for penny/vital now, or
-   just `api_key`/`bearer`? Probably `api_key` for both; revisit later.
-5. **Sent/nice REST paths** — the small alias table for prettier paths
+   either way; this decides when "true" tool streaming lands. Still open by
+   design — it's upstream-and-you; not blocking. The full SDK-vs-tool-streaming
+   breakdown is in §5.3a.)
+2. **Inbound push mechanism (D23 detail)** — the exact transport for the
+   email-entry → TaskWeaver callback. Candidates: (a) TaskWeaver webhook,
+   (b) `PUT /task` task creation (webhook triggers), (c) long-poll HTTP. Need to
+   inspect TaskWeaver's inbound surface in Phase 1 to pick one that lets
+   TaskWeaver *begin acting* (not just log).
+3. **IMAP idle → how it feeds event detection** — ImapEngine `idle()` is blocking
+   and must run in a worker loop, not the MCP request path. Do we run one
+   dedicated idle worker per account (mirroring mcp-server's background task),
+   or poll? Architecture detail to spike in Phase 1.
+4. **Nice REST path alias rule** — the small alias table for prettier paths
    (`/calendar/events` vs `/calendar/list/events`). Nail down the exact rule
    (deterministic conversion vs curated alias map) during Phase 1.
+
+### 9.3a The streaming conversation, clarified (this round)
+
+**Where the SDK's "streaming" is (and the gap):**
+
+| Capability | SDK | What it does | Status |
+|---|---|---|---|
+| Streamable HTTP transport | `StreamableHttpTransport` | POST `/mcp`, SSE response stream; `initialize` handshake + session | ✅ ships |
+| Progress notifications | `ClientGateway::progress()` (ProgressNotification) | tool handler can emit progress frames to the client mid-call | ✅ ships |
+| Server→client notifications | `Protocol::sendNotification()` | serves `resources/updated`, `notifications/progress`, etc. | ✅ ships (server side) |
+| CallbackStream | `CallbackStream` | PSR-7 stream whose read triggers `echo+flush()` — used for SSE | ✅ ships (low-level) |
+| **StreamableToolResult** | ❌ not in 0.8.x | upstream/SEP — the *tool result itself* streams | ❌ gap |
+
+**The gap in plain English:** the SDK can *send* things to a connected client (progress
+notifications, resource updates) and supports the HTTP streaming *transport*
+(SSE). What it *cannot* yet do — and what "streaming tool results" means — is
+the **`tools/call` response being a stream of chunks** (a `StreamableToolResult`
+that yields partial content, rather than one final JSON-RPC result). So:
+
+- What we *can* do now: `ClientGateway::progress()` — a long-running tool
+  (`run_backup`, `log_read`) emits progress frames while it runs, then a final
+  `CallToolResult`. That's the v1 streaming deliverable.
+- What we *cannot* do yet: the final tool result itself being chunked/streamable.
+  That's upstream `StreamableToolResult` — parked as D5, tracked upstream.
+
+**What this means for streaming UX:** use progress for *liveness*, and either
+(a) the final JSON `CallToolResult` (standard), or (b) a future StreamableToolResult
+for true chunking. Never fake it by abusing deprecated log notifications.
+
+---
+
+### 9.3b Inbound events context (this round)
+
+**The goal (from boss):** *"an email comes in — Context Loom gets that event in
+basically real time, and either streams it to TaskWeaver, or — for lack of a
+better term — does a 'callback' so TaskWeaver could receive the event in near
+real time and begin acting on it right away."*
+
+**Reality check (verified):** TaskWeaver's `HttpMcpClient` is request/response
+only — it does `tools/list` and `tools/call`, and it reads the SSE stream *until
+the JSON-RPC result frame* and disconnects. It has **no notification consumer**
+(`notifications/...` in, or persistent session). So TaskWeaver, today, cannot
+receive a server→client MCP notification and act on it. Similarly, Context Loom
+can't *push* a new MCP notification to TaskWeaver because TaskWeaver isn't
+listening for one.
+
+**So D23 is: inbound events are a `type: internal` registry entry (an event
+source), not a callable tool.** Two sub-parts:
+
+1. **Detection (Context Loom side).** Email arrival is detected via IMAP IDLE per
+   account (worker loop). This is an `internal` entry whose `probe` is the idle
+   listener. After detection, Context Loom **invokes an outbound action** — a
+   `webhook`/`callback` to TaskWeaver. It is *not* a tool the model calls.
+2. **Delivery (TaskWeaver side).** Usually one of:
+   - **TaskWeaver HTTP webhook / inbound endpoint** — Context Loom POSTs the
+     event (`webhook/payload`). This is the natural "callback" and lets
+     TaskWeaver *create a task / trigger a flow* immediately. **Open Q#2**.
+   - **Task creation via TaskWeaver REST** — `POST /api/task` (or equivalent) with
+     the event as task context; TaskWeaver scheduler/worker picks it up and
+     begins.
+   - Future: MCP `notifications/...` (a real time streaming push) — only once
+     TaskWeaver's client can consume server→client notifications. That's the
+     long-term ideal: context-loom pushes `notifications/...`/resource-updated
+     to TaskWeaver, which then calls back into Context Loom tools to act. But
+     **this is explicitly future** — TaskWeaver is not there yet.
+
+**Why this is the right shape:** it honors the *process* boundary. Context Loom
+is a resource server and event *source*; TaskWeaver is the orchestrator. The
+handoff is an outbound HTTP call (or task creation), which is architecturally
+simple and debuggable, and it does not require either project to grow MCP
+notification-consumption now. TaskWeaver can begin acting immediately because
+the event arrives as a normal inbound request.
+
+**Naming note:** the inbound entry is `type: internal` (it's context-loom-internal
+code), not `type: http` (which exists for *declared external REST calls*). A
+future `type: webhook`/`type: push` may be a distinct registry type if we want
+inbound events to be declarative too — parked.
+
+---
+
+### 9.4 The registry and streaming (D13/D15/D23 interplay)
+
+- `type: http` (D13) — *declared outbound REST call.* One YAML → tool + route.
+  Auth modes: `none`/`api_key`/`bearer`/`basic` now, `oauth_client_credentials`
+  future (D22).
+- `type: internal` — *our service code* (CalendarService, ImapIdleListener, etc.).
+  The inbound event entry (D23) is `internal`.
+- `type: process` — *subprocess.*
+- Streaming is **per-tool, not per-type**: any tool can be marked
+  `streaming.enabled` and use `ClientGateway::progress()` for liveness (D4),
+  even if its final result is a standard `CallToolResult`. True
+  `StreamableToolResult` is parked (D5).
 
 ### 9.1 OpenTelemetry — review & recommendation (decision pending boss review)
 
@@ -766,9 +910,9 @@ We do NOT have to build an auth server; we point at one.
   clients that need to self-register.
 - The REST/OpenAPI surface honors the same auth mode (API key or OAuth bearer; a
   single `authorization` resolver fronting both transports).
-- **Scope mapping** (remaining open Q#2): for OAuth, map MCP scopes to domains
-  initially (`calendar:read`/`calendar:write`, `email:read`, `notify:send`, ...)
-  — tool-level granularity is a later refinement. API-key mode = all-or-nothing.
+- **Scope mapping (D21): domain-level.** For OAuth, MCP scopes map to domains
+  (`calendar:read`/`calendar:write`, `email:read`, `notify:send`, ...).
+  Tool-level granularity is a later refinement. API-key mode = all-or-nothing.
 - When OAuth is enabled, the health/status surface and the well-known metadata
   are public (they're needed for discovery); tool execution is protected.
 
@@ -813,7 +957,9 @@ others. Spike in Phase 0 to confirm IDLE + proxy env + test connectivity.
 - `ContextLoomServer` with 1 hand-rolled tool (`contextloom_health`), API-key auth.
 - One `serve` command wiring MCP `/mcp` + health `/health` behind one router.
 - `contextloom:validate`/`probe` commands stubbed.
-- Spike answers §9: IMAP lib, CalDAV lib, process execution approach, OAuth middleware.
+- Spike answers §9: IMAP lib (ImapEngine), CalDAV lib (sabre), process execution
+  approach, OAuth middleware, and **TaskWeaver's inbound surface** (webhook vs
+  task-create vs long-poll) to pick the event-push transport (Open Q#2).
 
 **Phase 1 — Registry core + OpenAPI (the API contract)**
 - `RegistryEntry`/`InputSpec`/`OutputSpec`/`ProbeSpec` models + YAML loader +
@@ -835,9 +981,11 @@ others. Spike in Phase 0 to confirm IDLE + proxy env + test connectivity.
 
 **Phase 2 — Providers (the generics)**
 - Notify (ntfy, Discord) — simplest, ports directly from `mcp-server`.
-- Calendar (iCal read, CalDAV read/write) — heaviest, carry over recurrence +
-  timezone lessons.
-- Email (IMAP read, SMTP send).
+- Calendar (iCal read, CalDAV read/write via sabre) — heaviest, carry over
+  recurrence + timezone lessons.
+- Email (IMAP read/write via `ImapClient` service + SMTP send). IMAP IDLE
+  **worker per account** (`ImapIdleListener`, §5.3b/§9.3b) + event delivery to
+  TaskWeaver via the chosen transport from Open Q#2.
 
 **Phase 3 — Streaming (the pipe)**
 - `ToolRun`/`Chunk` contract + `StreamReader` (line-buffered subprocess reading).
