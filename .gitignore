@@ -1,0 +1,14 @@
+# .env is never committed — dev defaults live in .env.example (tracked),
+# local machine-specific overrides in .env.local (ignored).
+/.env
+/.env.local
+/.env.local.php
+/.env.*.local
+
+# Runtime/build artifacts
+/var/
+/vendor/
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/.php-cs-fixer.php
+/config/reference.php
