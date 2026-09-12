@@ -482,6 +482,16 @@ Facts we checked in the SDK source (2026-09-12):
    a third sink with zero changes to the executor. Until then we do NOT fake it.
 5. Unsupported clients (no progressToken): degrade silently to block behavior —
    same entry, same YAML.
+6. **Client caveat — TaskWeaver (our primary consumer) does NOT send
+   `progressToken`.** Verified 2026-09-12 in `taskweaver/src/MCP/HttpMcpClient.php`:
+   `call()` sends `{name, arguments}` with no `_meta`; it reads the full buffered
+   body (`getContent(false)`) and only parses frames after. `STREAMING.md` §5
+   explicitly defers streamed tool results (WORKER.md decision #10); the
+   controller tool proxy stays sync. **Consequence:** for TaskWeaver, context
+   loom tools appear request/response — the progress channel will silently
+   no-op. Progress serves MCP-aware clients that opt in (Claude Desktop, Cursor,
+   etc.); block sink is what TaskWeaver sees. A future TaskWeaver client
+   enhancement (issue filed) can add `_meta.progressToken` to opt in.
 
 Because the pipeline is `ToolRun → (block | progress | future streamable)`,
 "streaming all the way through" is an architecture property, not a per-tool
@@ -1083,7 +1093,7 @@ incrementally.
 | 5 | Providers shipped | **Notify** (ntfy + Discord): level routing/fallback, chunking (Discord 4096), color/tag map. Plus **penny-track + vital-pulse as `type: http` registry entries** — first real consumers, proving #2. (Calendar is NOT in v0.1 — see §11.2; the §7.1 contract carries to v0.2.) |
 | 6 | Health & probing | Static probes on boot (hard excludes per §6.2). Background connectivity probes (async, timeout 3s, concurrency ≤4, never block boot; `PROBE_MODE`/`PROBE_INTERVAL`/`PROBE_TIMEOUT`/`PROBE_ON_BOOT`; per-entry `probe: none`). Single health surface (§7.5). |
 | 7 | CLI | `contextloom:validate` (CI-fast config check) and `contextloom:probe` functional. |
-| 8 | Streaming | Stream-native core (`ToolRun`/`Chunk`/`StreamReader`/`StreamSink`) + **live streaming end-to-end** for entries that declare it: progress sink via `ClientGateway::progress()` (progressToken-gated, debounced — SDK 0.8.x sanctioned channel, §5.2); block sink fallback for the rest. True `StreamableToolResult` still parked (not in SDK 0.8.x) — don't fake it. |
+| 8 | Streaming | Stream-native core (`ToolRun`/`Chunk`/`StreamReader`/`StreamSink`) + **live streaming end-to-end** for entries that declare it: progress sink via `ClientGateway::progress()` (progressToken-gated, debounced — SDK 0.8.x sanctioned channel, §5.2); block sink fallback for the rest. **Client caveat: TaskWeaver sends no `progressToken` (verified 2026-09-12) — for it, tools are request/response; progress targets MCP-aware clients that opt in.** True `StreamableToolResult` still parked (not in SDK 0.8.x) — don't fake it. |
 | 9 | Tests | PHPUnit green: registry load, condition filtering, arg validation, path derivation, HTTP runner (mocked PSR-18). CI gate. |
 | 10 | Packaging | Multi-stage Dockerfile (amd64+arm64), compose, `.env.example`, public README (quickstart + registry docs), LICENSE (follow `mcp/sdk` Apache-2.0 — confirm at packaging time), Gitea Actions CI (test → `docker buildx bake` → push). |
 | 11 | Release | Git tag `v0.1.0` → Docker Hub `digitaladapt/context-loom:latest` + `:0.1.0` (versions strip `v`, per our convention). Both arches. |
