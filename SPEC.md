@@ -190,7 +190,8 @@ Rules:
 - **Anything with valid config is registered — always.** A tool is in the
   definition list if (and only if) its configuration is valid. Health status is
   **not** a registration concern; it is reported by the health endpoint and the
-  `contextloom_health` tool only. There is no `requires_healthy` hide-behavior.
+  `contextloom_health` tool only. (`requires_healthy` hide-if-down is **parked
+  v3.0** — gone from current plans.)
 - **Connectivity probing is a soft, post-registration concern.** It never affects
   registration or definitions. It feeds a `HealthRegistry` consumed by
   `/health` and `contextloom_health` (see §6.4). A temporarily down backend
@@ -604,9 +605,9 @@ static-only unless the entry author explicitly declares a `--version` probe.
 Registration policy: **all four states stay registered — always.** A tool is
 registered purely on config validity (see §4.1). Health never hides or removes a
 tool; a temporarily down backend means calls return a clean, structured
-"backend unreachable (`down`)" tool error, never a missing tool. There is no
-`requires_healthy` hide-behavior — health is for `/health` and
-`contextloom_health` only.
+"backend unreachable (`down`)" tool error, never a missing tool. Health is for
+`/health` and `contextloom_health` only. (`requires_healthy` hide-if-down is
+**parked v3.0** — gone from current plans.)
 
 **How the model learns about health:** because tool definitions are cached by
 the client, we do **not** mutate tool descriptions with health status (that
@@ -725,7 +726,7 @@ streaming/probe extensions above. **This is where "the pipe" earns its keep.**
 | D6 | Process-group kill | Feasible (`posix`/`pcntl`/`sockets` present in runtime image) — required. |
 | D7 | Verb-first naming | Confirmed: `{verb}_{resource}` order — verbs first because LLMs read natural language (`calendar_list_events`, not `calendar_events_list`). Now folded into D1/D12 (no prefix). |
 | D8 | OpenAPI + MCP | **Both** in the official support matrix: MCP streamable HTTP + OpenAPI/REST, same registry entry as single source. Phase 1 includes the OpenAPI surface. |
-| D9 | Registration vs health | **Registration is config-only.** A tool with a valid config is always registered — no `requires_healthy` hide-behavior. Health status lives in the health endpoint + `contextloom_health` tool only. Bad config = server-level structured log + health endpoint reports `config: invalid` with reason. |
+| D9 | Registration vs health | **Registration is config-only.** A tool with a valid config is always registered. Health status lives in the health endpoint + `contextloom_health` tool only (`requires_healthy` hide-if-down: **parked v3.0**, gone from current plans). Bad config = server-level structured log + health endpoint reports `config: invalid` with reason. |
 | D10 | Health surface | **Single** `contextloom_health` (MCP) / `GET /health` (REST), per-provider detail in the response. No per-domain health tools. |
 | D11 | OpenTelemetry | Pattern now (structured PSR-3 + manual spans), exporter later (optional dependency, env-gated). No OTel infra required for v1. See §9.1. |
 | D12 | No `cmd_` prefix | Dropped. Registry entries are native tools: `vital_pulse_list_records`, `run_backup`. Naming = `{domain}_{verb}_{resource}`; REST path derives from name. See §4.5. |
@@ -1022,8 +1023,8 @@ others. Spike in Phase 0 to confirm IDLE + proxy env + test connectivity.
 **Phase 4 — Probing & health**
 - `ProbeSpec` implementations per protocol; background probe runner with
   interval/cache; `HealthRegistry`; `contextloom_health` tool; OTel structured
-  events (or stderr, per §9.1 — pattern now, exporter later). (No
-  `requires_healthy` — registration is config-only, §4.1/D9.)
+  events (or stderr, per §9.1 — pattern now, exporter later). (`requires_healthy`
+  parked v3.0 — registration is config-only, §4.1/D9.)
 
 **Phase 5 — Packaging & release**
 - Dockerfile (multi-stage, amd64+arm64), compose, CI (GitHub Actions/Gitea
