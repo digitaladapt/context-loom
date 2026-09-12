@@ -137,8 +137,20 @@ same as the previous tree: `Domain` is pure, `Service` is application,
 
 ### 3.1 MCP transport
 
-- Use the official `mcp/sdk` server builder: `Mcp\Server\Server` + `Mcp\Server\Transport\StdioTransport`
-  (default) and HTTP transport via the SDK (streamable HTTP).
+- Use the official `mcp/sdk` server builder: `Mcp\Server\Server` + `Mcp\Server\Transport\StreamableHttpTransport`
+  (**primary** — `POST /mcp` + SSE) and `StdioTransport` (optional dev convenience).
+- **HTTP is the deployment transport.** Context Loom runs as its own container;
+  TaskWeaver connects over the network (own container, same compose network or
+  remote). STDIO is only viable when the client spawns the server as a subprocess
+  on the same host/process environment — it cannot cross containers. Kept because
+  the SDK gives it for free and it's handy in dev/tests, but NOT a v1 gate item
+  (§11.1).
+- **Transport truth:** STDIO = file/process pipe descriptors. It is only useful
+  when client + server share a process environment (same container, same host,
+  or shared filesystem so the client can exec the server binary). Context Loom
+  and TaskWeaver are never co-resident; they are separate containers on a
+  compose network. So HTTP is the only real transport for us; STDIO is a
+  dev/tests convenience.
 - **Two official transports (D8):** MCP streamable HTTP + OpenAPI/REST. Same
   registry entry is the single source of truth for tool definitions and REST
   endpoints. `context-loom serve` runs one process serving MCP (`/mcp`), REST
@@ -977,7 +989,7 @@ others. Spike in Phase 0 to confirm IDLE + proxy env + test connectivity.
 ## 10. Phases
 
 **Phase 0 — Skeleton (small, demonstrable)**
-- Symfony app skeleton, `mcp/sdk` hello-world server over STDIO + HTTP.
+- Symfony app skeleton, `mcp/sdk` hello-world server over **HTTP (primary)** + STDIO (dev only).
 - `ContextLoomServer` with 1 hand-rolled tool (`contextloom_health`), API-key auth.
 - One `serve` command wiring MCP `/mcp` + health `/health` behind one router.
 - `contextloom:validate`/`probe` commands stubbed.
@@ -1039,9 +1051,11 @@ public release. `v0.1.0` is not "the whole spec" — it is the smallest slice th
 is genuinely useful to a stranger who pulls the image from Docker Hub. If any
 gate item is missing, we do **not** tag `v0.1.0`.
 
-**Version story:** v0.1.0 = MVP (this section). v0.2 adds the remaining generics
-+ live streaming. v2.0 adds OAuth 2.1 proxy mode. v3.0 adds `requires_healthy`
-(parked). v4.0 multi-user. The full §7 surface is the v1 target, reached
+**Version story:** v0.1.0 = MVP (this section): registry + tool types,
+HTTP-first MCP, calendar + notify + our services, live streaming
+(progress channel). v0.2 adds email (IMAP/SMTP) + remaining generics.
+v2.0 adds OAuth 2.1 proxy mode. v3.0 adds `requires_healthy` (parked).
+v4.0 multi-user. The full §7 surface is the v1 target, reached
 incrementally.
 
 ### 11.1 The gate — must all be true for `v0.1.0`
@@ -1050,23 +1064,23 @@ incrementally.
 |---|---|---|
 | 1 | Registry core | `registry/*.yaml` loaded at boot; static validation (hard) — invalid entry excluded, structured log, `config: invalid` in health; `requires:` env conditions; no-prefix naming (§4.5). |
 | 2 | Tool types | `internal`, `http`, `process` all first-class. `type: http` executor (D13): method, URL template (env+args), headers, `api_key`/`bearer`/`basic`/none, params, body; response → `OutputSpec`. PSR-18. |
-| 3 | MCP surface | `mcp/sdk` ^0.8 server over STDIO + streamable HTTP `/mcp`; every registry entry registered as a native tool; `contextloom_health` present. |
+| 3 | MCP surface | **Streamable HTTP `/mcp` — primary, required.** `mcp/sdk` ^0.8 server over HTTP (POST + SSE); every registry entry registered as a native tool; `contextloom_health` present. STDIO is optional dev convenience only — not a gate item (§3.1). |
 | 4 | REST/OpenAPI | Full parity (D15): one route + one operation per entry, alias table, `GET /health`, API-key auth (same key as MCP). |
-| 5 | Providers shipped | **Notify** (ntfy + Discord) — port `mcp-server` behavior: level routing/fallback, chunking (Discord 4096), color/tag map. Plus **penny-track + vital-pulse as `type: http` registry entries** — the first real consumers, proving #2. |
+| 5 | Providers shipped | **Calendar** (CalDAV read/write + iCal read) — full §7.1 toolset with `mcp-server` parity: events + tasks, alarms, recurring expansion, timezone preservation, `(uid, start)` dedupe. **Notify** (ntfy + Discord): level routing/fallback, chunking (Discord 4096), color/tag map. Plus **penny-track + vital-pulse as `type: http` registry entries** — first real consumers, proving #2. |
 | 6 | Health & probing | Static probes on boot (hard excludes per §6.2). Background connectivity probes (async, timeout 3s, concurrency ≤4, never block boot; `PROBE_MODE`/`PROBE_INTERVAL`/`PROBE_TIMEOUT`/`PROBE_ON_BOOT`; per-entry `probe: none`). Single health surface (§7.5). |
 | 7 | CLI | `contextloom:validate` (CI-fast config check) and `contextloom:probe` functional. |
-| 8 | Stream-native core | `ToolRun`/`Chunk`/`StreamReader`/`StreamSink` exist; **block sink only** (consume stream at end → `CallToolResult`). No live client streaming in v0.1. |
+| 8 | Streaming | Stream-native core (`ToolRun`/`Chunk`/`StreamReader`/`StreamSink`) + **live streaming end-to-end** for entries that declare it: progress sink via `ClientGateway::progress()` (progressToken-gated, debounced — SDK 0.8.x sanctioned channel, §5.2); block sink fallback for the rest. True `StreamableToolResult` still parked (not in SDK 0.8.x) — don't fake it. |
 | 9 | Tests | PHPUnit green: registry load, condition filtering, arg validation, path derivation, HTTP runner (mocked PSR-18). CI gate. |
 | 10 | Packaging | Multi-stage Dockerfile (amd64+arm64), compose, `.env.example`, public README (quickstart + registry docs), LICENSE (follow `mcp/sdk` Apache-2.0 — confirm at packaging time), Gitea Actions CI (test → `docker buildx bake` → push). |
 | 11 | Release | Git tag `v0.1.0` → Docker Hub `digitaladapt/context-loom:latest` + `:0.1.0` (versions strip `v`, per our convention). Both arches. |
 
 ### 11.2 Explicitly deferred (NOT in v0.1)
 
-- **Calendar + email providers** → v0.2 (CalDAV/IMAP parity with `mcp-server`: recurrence, timezone, dedupe, IDLE).
-- **Live streaming to the client** (progress sink, subprocess pipe, `StreamableToolResult`) → v0.2; architecture stays stream-native (§5).
+- **Email (IMAP + SMTP)** → v0.2 (list/read/send + IMAP IDLE event push — §5.3b/§9.3b).
 - **OAuth 2.1 proxy mode** → v2.0. Multi-user → v4.0.
 - **OTel exporter** → later (pattern only: PSR-3 structured logs in v0.1).
 - **`requires_healthy`** → parked v3.0 (§4.1/D9).
+- **True `StreamableToolResult`** → parked pending upstream `mcp/sdk` SEP (§5.2); we use the progress channel, never a fake.
 
 ---
 
