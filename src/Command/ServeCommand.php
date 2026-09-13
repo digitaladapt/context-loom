@@ -64,8 +64,9 @@ final class ServeCommand extends Command
             return Command::FAILURE;
         }
 
-        // Forward server output to the console and keep the command alive
-        // until the process exits (Ctrl-C kills the child via proc_terminate).
+        // Forward the server's output to the console and keep the command
+        // alive until the child exits. Ctrl-C stops the child as well: both
+        // share the terminal's process group.
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
 
@@ -80,11 +81,19 @@ final class ServeCommand extends Command
             foreach ([$pipes[1], $pipes[2]] as $pipe) {
                 $chunk = fread($pipe, 4096);
                 if (false !== $chunk && '' !== $chunk) {
-                    $io->getOutput()->write($chunk);
+                    $output->write($chunk, false, OutputInterface::OUTPUT_RAW);
                 }
             }
 
             usleep(100_000);
+        }
+
+        // Drain anything the server wrote before exiting (e.g. an early
+        // "port in use" failure) so nothing the child reports gets lost.
+        foreach ([$pipes[1], $pipes[2]] as $pipe) {
+            while (false !== ($chunk = fread($pipe, 8192)) && '' !== $chunk) {
+                $output->write($chunk, false, OutputInterface::OUTPUT_RAW);
+            }
         }
 
         foreach ($pipes as $pipe) {
