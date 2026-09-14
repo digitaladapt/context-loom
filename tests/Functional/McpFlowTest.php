@@ -144,7 +144,7 @@ final class McpFlowTest extends TestCase
     }
 
     /**
-     * Regression: production 403 (loom.devgnome.com, 2026-09-13). The SDK's
+     * Regression: production 403 (2026-09-13, see PR description). The SDK's
      * DNS-rebinding protection defaults to a localhost-only Host/Origin
      * allowlist, so a server deployed under a real hostname 403'd every
      * request before auth even ran. Request::create() defaults to
