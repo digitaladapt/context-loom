@@ -8,6 +8,7 @@ use App\Kernel;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Dotenv\Dotenv;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Boots the real Kernel and drives the MCP streamable HTTP endpoint through
@@ -16,6 +17,9 @@ use Symfony\Component\HttpFoundation\Request;
 final class McpFlowTest extends TestCase
 {
     private const API_KEY = 'test-api-key-12345';
+
+    /** Host allowlisted in .env.test for these tests (see CONTEXT_LOOM_ALLOWED_HOSTS). */
+    private const ALLOWED_HOST = 'loom.example.com';
 
     private Kernel $kernel;
 
@@ -37,6 +41,7 @@ final class McpFlowTest extends TestCase
     {
         $server = [
             'CONTENT_TYPE' => 'application/json',
+            'HTTP_HOST' => 'localhost',
             'HTTP_AUTHORIZATION' => 'Bearer '.self::API_KEY,
             'HTTP_MCP_PROTOCOL_VERSION' => '2025-06-18',
         ];
@@ -136,5 +141,62 @@ final class McpFlowTest extends TestCase
         $body = json_decode($response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
         self::assertSame('ok', $body['status']);
         self::assertArrayHasKey('version', $body);
+    }
+
+    /**
+     * Regression: production 403 (loom.devgnome.com, 2026-09-13). The SDK's
+     * DNS-rebinding protection defaults to a localhost-only Host/Origin
+     * allowlist, so a server deployed under a real hostname 403'd every
+     * request before auth even ran. Request::create() defaults to
+     * Host: localhost — exactly what the allowlist permits — which is why
+     * the tests above never caught it.
+     */
+    public function test_unlisted_public_hostname_is_rejected(): void
+    {
+        $response = $this->postToHost([
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'initialize',
+            'params' => [
+                'protocolVersion' => '2025-06-18',
+                'capabilities' => [],
+                'clientInfo' => ['name' => 'phpunit', 'version' => '1.0'],
+            ],
+        ], 'evil.example.net');
+
+        self::assertSame(403, $response->getStatusCode());
+        self::assertStringContainsString('Invalid Host header', $response->getContent());
+    }
+
+    public function test_allowlisted_public_hostname_is_served(): void
+    {
+        $response = $this->postToHost([
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'initialize',
+            'params' => [
+                'protocolVersion' => '2025-06-18',
+                'capabilities' => [],
+                'clientInfo' => ['name' => 'phpunit', 'version' => '1.0'],
+            ],
+        ], self::ALLOWED_HOST);
+
+        self::assertSame(200, $response->getStatusCode());
+        $body = json_decode($response->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame('context-loom', $body['result']['serverInfo']['name']);
+    }
+
+    private function postToHost(array $payload, string $host): Response
+    {
+        $server = [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_HOST' => $host,
+            'HTTP_AUTHORIZATION' => 'Bearer '.self::API_KEY,
+            'HTTP_MCP_PROTOCOL_VERSION' => '2025-06-18',
+        ];
+
+        $request = Request::create('/mcp', 'POST', [], [], [], $server, json_encode($payload, \JSON_THROW_ON_ERROR));
+
+        return $this->kernel->handle($request);
     }
 }

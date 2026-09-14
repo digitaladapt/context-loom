@@ -6,7 +6,8 @@ namespace App\Controller;
 
 use App\Infrastructure\Auth\ApiKeyAuthenticator;
 use App\MCP\ContextLoomServer;
-use Mcp\Server\Transport\StreamableHttpTransport;
+use Mcp\Server\Transport\Http\Middleware\CorsMiddleware;
+use Mcp\Server\Transport\Http\Middleware\DnsRebindingProtectionMiddleware;
 use Psr\Http\Message\ServerRequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -24,23 +25,52 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  * Auth: when CONTEXT_LOOM_AUTH=apikey (the default), the SDK transport's
  * default security middleware + our ApiKeyAuthenticator run at the edge.
+ *
+ * Host/Origin validation: the SDK's DNS-rebinding protection defaults to a
+ * localhost-only allowlist, which 403s every request carrying a public
+ * hostname (Host or Origin header) before auth even runs. On a server deployed
+ * behind a reverse proxy under a real hostname, CONTEXT_LOOM_ALLOWED_HOSTS
+ * (comma-separated, no ports; IPv6 bracketed) extends that allowlist.
+ * Unset/empty keeps the SDK defaults — correct for the local dev loop.
  */
 final class McpController
 {
+    /** @var list<string>|null null: SDK defaults (localhost variants) */
+    private readonly ?array $allowedHosts;
+
     public function __construct(
         private readonly ContextLoomServer $server,
         private readonly ApiKeyAuthenticator $apiKeyAuthenticator,
         private readonly ServerRequestFactoryInterface $serverRequestFactory,
         private readonly StreamFactoryInterface $streamFactory,
+        ?string $allowedHostsCsv = null,
     ) {
+        $hosts = null;
+
+        if (null !== $allowedHostsCsv && '' !== trim($allowedHostsCsv)) {
+            $hosts = array_values(array_filter(
+                array_map('trim', explode(',', $allowedHostsCsv)),
+                static fn (string $host): bool => '' !== $host,
+            ));
+        }
+
+        $this->allowedHosts = [] === $hosts ? null : $hosts;
     }
 
     public function handle(Request $request): Response
     {
         $psrRequest = $this->toPsr7($request);
 
+        // Same pipeline as StreamableHttpTransport::defaultMiddleware()
+        // (CORS + DNS-rebinding protection), but with a configurable host
+        // allowlist. Do NOT add ProtocolVersionMiddleware here: the transport
+        // applies it to handshake-era traffic on its own (SDK 0.8.x warns
+        // otherwise).
         $middleware = [
-            ...StreamableHttpTransport::defaultMiddleware(),
+            new CorsMiddleware(),
+            null === $this->allowedHosts
+                ? new DnsRebindingProtectionMiddleware()
+                : new DnsRebindingProtectionMiddleware($this->allowedHosts),
             $this->apiKeyAuthenticator,
         ];
 
