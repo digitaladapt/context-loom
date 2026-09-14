@@ -31,6 +31,14 @@ use Psr\Log\LoggerInterface;
  * resolved from the parameters. A tool with no inputs takes no arguments —
  * a required `array $arguments` parameter would be treated as a missing
  * tool input named "arguments".
+ *
+ * Schema convention (learned the hard way): never publish empty containers
+ * in a tool schema. Consumers that decode to associative arrays and re-encode
+ * (TaskWeaver stores schemas in a JSON column, then re-serves them to LLMs)
+ * cannot distinguish `{}` from `[]`, so a correct `"properties": {}` comes
+ * back out as `"properties": []` — rejected by strict validators ("properties
+ * must be an object"). A no-input tool publishes the minimal `{"type":
+ * "object"}` and leaves `properties`/`required` off entirely.
  */
 final class ContextLoomServer
 {
@@ -76,10 +84,11 @@ final class ContextLoomServer
                 name: 'contextloom_health',
                 title: 'Context Loom health',
                 description: 'Reports Context Loom server health: overall status and per-provider connectivity. Use this to check that the server and its backends are reachable.',
+                // Deliberately minimal — no `properties`/`required`: a no-input
+                // tool needs neither, and any empty container here would flip
+                // to `[]` in a consumer round trip (see schema convention).
                 inputSchema: [
                     'type' => 'object',
-                    'properties' => new \stdClass(),
-                    'required' => [],
                 ],
             )
             ->build();
