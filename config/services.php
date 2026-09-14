@@ -41,7 +41,11 @@ return static function (ContainerConfigurator $container): void {
 
     // Controllers (public: referenced by routes).
     $services->set(HealthController::class)->public();
-    $services->set(McpController::class)->public();
+    $services->set(McpController::class)
+        ->args([
+            '$allowedHostsCsv' => '%env(default::CONTEXT_LOOM_ALLOWED_HOSTS)%',
+        ])
+        ->public();
 
     // MCP layer.
     $services->set(HealthRegistry::class)->public();
