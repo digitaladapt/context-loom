@@ -119,6 +119,75 @@ final class McpFlowTest extends TestCase
         self::assertSame([], $call['body']['result']['structuredContent']['providers']);
     }
 
+    /**
+     * Regression: every tool definition must survive a lossy decode → encode
+     * round trip — the hop any consumer makes between us and the LLM.
+     *
+     * PHP cannot tell an empty JSON object (`{}`) from an empty array (`[]`)
+     * once decoded into an associative array — both are `[]`. A definition
+     * published with `"properties":{}` therefore comes back out of a
+     * consumer's re-encode as `"properties":[]`, which strict tool-schema
+     * validators reject: `JSON schema error at #: properties must be an
+     * object`. (Reported via TaskWeaver, which stores tool schemas in a JSON
+     * column and re-serves them to workers/LLMs.)
+     */
+    public function test_tool_schemas_survive_lossy_json_round_trip(): void
+    {
+        $init = $this->post([
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'initialize',
+            'params' => [
+                'protocolVersion' => '2025-06-18',
+                'capabilities' => [],
+                'clientInfo' => ['name' => 'phpunit', 'version' => '1.0'],
+            ],
+        ]);
+        $session = $init['session'];
+        self::assertNotNull($session);
+
+        $this->post([
+            'jsonrpc' => '2.0',
+            'method' => 'notifications/initialized',
+        ], $session);
+
+        $list = $this->post([
+            'jsonrpc' => '2.0',
+            'id' => 2,
+            'method' => 'tools/list',
+            'params' => [],
+        ], $session);
+
+        self::assertSame(200, $list['status']);
+        $tools = $list['body']['result']['tools'];
+        self::assertNotEmpty($tools);
+
+        foreach ($tools as $tool) {
+            // $tool is already the assoc-decoded form (the lossy half of the
+            // trip); re-encoding it is what any PHP consumer does next.
+            $reEncoded = json_encode($tool, \JSON_THROW_ON_ERROR);
+
+            self::assertStringNotContainsString(
+                '"properties":[]',
+                $reEncoded,
+                \sprintf('Tool "%s" re-encodes to an invalid "properties":[] (must stay an object).', $tool['name']),
+            );
+        }
+
+        // The no-arg health tool publishes the bare minimal schema — nothing
+        // an encoder could turn into `[]`.
+        $healthTool = null;
+        foreach ($tools as $tool) {
+            if ('contextloom_health' === $tool['name']) {
+                $healthTool = $tool;
+                break;
+            }
+        }
+
+        self::assertNotNull($healthTool, 'contextloom_health must be listed.');
+        self::assertSame(['type' => 'object'], $healthTool['inputSchema']);
+    }
+
     public function test_missing_api_key_is_unauthorized(): void
     {
         $server = [
