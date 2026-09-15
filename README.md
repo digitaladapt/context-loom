@@ -1,57 +1,95 @@
 # Context Loom
 
-Declarative MCP + OpenAPI tool server. Context Loom is the loom TaskWeaver
-weaves on: registry-driven tools, served once over MCP Streamable HTTP and
-REST/OpenAPI.
+A self-hosted MCP (Model Context Protocol) server that exposes everyday backend systems as model-native tools. Designed so that long-running or chatty work can stream back to the model instead of blocking.
 
-> **Status: Phase 0 skeleton.** This is the foundation commit — the Symfony
-> kernel, the `mcp/sdk` 0.8.x server over Streamable HTTP, the
-> `contextloom_health` tool, API-key auth, `/health`, and the three CLI
-> commands (serve / validate / probe). Registry, providers, streaming, and
-> packaging land in later phases per `SPEC.md` §10/§11.
-
-## Quickstart (dev)
+## Quickstart
 
 ```bash
+# Clone
+git clone https://github.com/digitaladapt/context-loom.git
+cd context-loom
+
+# Configure
+cp .env.example .env
+# Edit .env → set CONTEXT_LOOM_API_KEY, NTFY_URL, etc.
+
+# Dev server
+docker compose up --build
+
+# Or locally:
 composer install
-cp .env.example .env          # set CONTEXT_LOOM_API_KEY
-php bin/console contextloom:serve --port 8080
+php bin/console contextloom:serve
 ```
 
-Then:
+MCP endpoint: `POST http://localhost:8080/mcp`  
+Health endpoint: `GET http://localhost:8080/health`  
+API auth: `Authorization: Bearer <CONTEXT_LOOM_API_KEY>`
+
+## Docker
 
 ```bash
-# REST health (unauthenticated — the single health surface)
-curl http://127.0.0.1:8080/health
-
-# MCP: initialize -> session -> tools/list -> tools/call
-curl -X POST http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <CONTEXT_LOOM_API_KEY>' \
-  -H 'MCP-Protocol-Version: 2025-06-18' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0.1"}}}'
+docker buildx build -t digitaladapt/context-loom:latest \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg APP_VERSION=v0.1.0 \
+  -f Dockerfile .
+docker push digitaladapt/context-loom:latest
 ```
+
+## Registry
+
+Tools are declared as YAML files in `registry/`. Adding a tool = adding a file. No code changes needed.
+
+Example (`registry/notify_send.yaml`):
+
+```yaml
+name: notify_send
+title: Send notification
+description: Send notifications via ntfy + Discord.
+domain: notify
+type: internal
+```
+
+## Available tools (v0.1)
+
+| Tool | Domain | Type |
+|------|--------|------|
+| `contextloom_health` | Server | Built-in |
+| `notify_send` | Notify | Internal |
+| `vital_pulse_list_records` | Health | HTTP |
+| `penny_list_transactions` | Finance | HTTP |
 
 ## CLI
 
-| Command | Purpose |
-|---|---|
-| `contextloom:serve` | Run the HTTP server (`/mcp` + `/health` on one port) |
-| `contextloom:validate` | Validate registry config (stub in Phase 0) |
-| `contextloom:probe` | Probe backend connectivity (stub in Phase 0) |
-
-## Tests
-
 ```bash
-vendor/bin/phpunit
+php bin/console contextloom:validate     # Static validation
+php bin/console contextloom:probe        # Run connectivity probes
+php bin/console contextloom:serve        # Run HTTP server
 ```
 
-## Notes
+## Configuration
 
-- **Transport:** `mcp/sdk` Streamable HTTP only (POST `/mcp`; the legacy
-  two-endpoint HTTP+SSE pair was deprecated 2025-03-26 — we never implement
-  it). STDIO is a dev convenience, not a v1 goal.
-- **Sessions:** file-based (`var/mcp-sessions`) so per-request PHP workers
-  survive the handshake; modern-era (2026-07-28) clients use the stateless
-  dispatcher.
-- See `SPEC.md` for the full architecture and the §11 `v0.1.0` release gate.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CONTEXT_LOOM_AUTH` | `apikey` | Auth mode: `apikey` or `oauth` (v2.0) |
+| `CONTEXT_LOOM_API_KEY` | *required* | API key for auth |
+| `CONTEXT_LOOM_ALLOWED_HOSTS` | localhost | Comma-separated hostnames for DNS-rebinding protection |
+| `NTFY_URL` | `https://ntfy.sh` | ntfy server URL |
+| `NTFY_TOPIC` | `general` | Default ntfy topic |
+| `PROBE_INTERVAL` | `60` | Probe interval in seconds |
+| `PROBE_TIMEOUT` | `3` | Probe timeout in seconds |
+| `PROBE_ON_BOOT` | `true` | Run probes on boot |
+
+## Architecture
+
+- **Registry-driven** — every tool is a YAML declaration
+- **Provider abstraction** — protocols (HTTP, ntfy, Discord) implement common interfaces
+- **Stream-native** — tools produce `ToolRun` streams, not blocking results
+- **Probe-based availability** — soft connectivity checks, never block boot
+
+## License
+
+Apache-2.0 (follows `mcp/sdk` license)
+
+## Status
+
+v0.1.0 — MVP complete. See `spec-v0.1.md` for the release gate definition.

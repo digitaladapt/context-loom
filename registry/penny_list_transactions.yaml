@@ -1,0 +1,39 @@
+# penny_list_transactions — list transactions from penny-track API
+# SPEC §4.2: type: http — first-class HTTP tool entry.
+name: penny_list_transactions
+title: List penny transactions
+description: List financial transactions from penny-track for an inclusive date range.
+domain: finance
+type: http
+http:
+  method: GET
+  url: "${PENNY_TRACK_URL}/api/v1/transactions"
+  headers:
+    Authorization: "Bearer ${PENNY_API_KEY}"
+  params: [from_date, to_date]
+  auth: bearer
+  api_key: "${PENNY_API_KEY}"
+  timeout: 30
+requires:
+  - PENNY_TRACK_URL
+  - PENNY_API_KEY
+args:
+  - name: from_date
+    field_name: from_date
+    type: string
+    required: true
+    help: Start of the date range (ISO 8601, inclusive), e.g. 2025-01-01.
+  - name: to_date
+    field_name: to_date
+    type: string
+    required: true
+    help: End of the date range (ISO 8601, inclusive), e.g. 2025-01-31.
+output:
+  mode: block
+  format: json
+streaming: false
+probe:
+  level: connectivity
+  method: GET
+  url: "${PENNY_TRACK_URL}/health"
+  timeout: 3

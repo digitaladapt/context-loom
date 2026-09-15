@@ -1,0 +1,44 @@
+# notify_send — send notifications via ntfy + Discord
+# SPEC §7.3: Level-aware routing, chunking (Discord 4096), color/tag map.
+name: notify_send
+title: Send notification
+description: Send a notification to configured channels (ntfy, Discord). Supports level-aware routing with automatic chunking for Discord's 4096 char limit.
+domain: notify
+type: internal
+args:
+  - name: message
+    type: string
+    required: true
+    help: The notification message body.
+  - name: channels
+    type: array
+    required: true
+    help: List of channels to send to (e.g., ["ntfy", "discord"]).
+  - name: level
+    type: string
+    required: false
+    help: Notification level (trace, debug, info, notice, warning, error, critical, emergency). Default: info.
+  - name: ntfy_topic
+    type: string
+    required: false
+    help: ntfy topic to send to (overrides NTFY_TOPIC env).
+  - name: ntfy_url
+    type: string
+    required: false
+    help: ntfy server URL (overrides NTFY_URL env).
+  - name: discord_webhook
+    type: string
+    required: false
+    help: Discord webhook URL (overrides DISCORD_WEBHOOK env).
+  - name: discord_username
+    type: string
+    required: false
+    help: Override for the Discord bot username.
+streaming: false
+probe:
+  level: connectivity
+  method: GET
+  url: "${NTFY_URL}/v1/health"
+  timeout: 3
+requires:
+  - NTFY_URL
