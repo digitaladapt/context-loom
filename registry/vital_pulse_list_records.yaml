@@ -1,0 +1,39 @@
+# vital_pulse_list_records — list health readings from vital-pulse API
+# SPEC §4.2: type: http — first-class HTTP tool entry.
+name: vital_pulse_list_records
+title: List vital-pulse readings
+description: List health log readings (blood pressure, heart rate, weight) from vital-pulse for an inclusive date range.
+domain: health
+type: http
+http:
+  method: GET
+  url: "${VITAL_PULSE_URL}/api/v1/logs"
+  headers:
+    Authorization: "Bearer ${VITAL_PULSE_API_KEY}"
+  params: [from_date, to_date]
+  auth: bearer
+  api_key: "${VITAL_PULSE_API_KEY}"
+  timeout: 30
+requires:
+  - VITAL_PULSE_URL
+  - VITAL_PULSE_API_KEY
+args:
+  - name: from_date
+    field_name: from_date
+    type: string
+    required: true
+    help: Start of the date range (ISO 8601, inclusive), e.g. 2025-01-01.
+  - name: to_date
+    field_name: to_date
+    type: string
+    required: true
+    help: End of the date range (ISO 8601, inclusive), e.g. 2025-01-31.
+output:
+  mode: block
+  format: json
+streaming: false
+probe:
+  level: connectivity
+  method: GET
+  url: "${VITAL_PULSE_URL}/health"
+  timeout: 3

@@ -4,48 +4,32 @@ declare(strict_types=1);
 
 namespace App\MCP;
 
-use Mcp\Schema\ServerCapabilities;
+use App\Service\HealthRegistry;
+use App\Service\NotifyService;
+use App\Service\Registry\Registry;
+use App\Service\ToolExecutor;
 use Mcp\Server;
-use Mcp\Server\Session\FileSessionStore;
+use Mcp\Server\Transport\StreamableHttpTransport;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * Context Loom MCP server — wires the official mcp/sdk builder and exposes
- * the registry tools (v0.1: precisely contextloom_health).
+ * Context Loom MCP server — wires mcp/sdk, registers registry tools, and the health tool.
  *
- * The SDK is built once (tool definitions + handlers) and the transport is
- * per-request, so one server object serves every /mcp call.
- *
- * Sessions: the PHP built-in server re-executes the front controller per
- * request (no shared memory), so the default in-memory session store does not
- * survive between requests. We use the SDK's file-based store. In production
- * (FrankenPHP worker mode / multiple HTTP workers) the same store stays
- * correct — files are shared. Modern-era clients that skip the handshake
- * (SEP-2575, 2026-07-28) use the stateless dispatcher and need no session.
- *
- * Handler convention (verified in mcp/sdk 0.8.x ReferenceHandler): an
- * addTool() closure receives named parameters matching the tool's declared
- * input fields; SDK-injectable types (ClientGateway, RequestContext) are
- * resolved from the parameters. A tool with no inputs takes no arguments —
- * a required `array $arguments` parameter would be treated as a missing
- * tool input named "arguments".
- *
- * Schema convention (learned the hard way): never publish empty containers
- * in a tool schema. Consumers that decode to associative arrays and re-encode
- * (TaskWeaver stores schemas in a JSON column, then re-serves them to LLMs)
- * cannot distinguish `{}` from `[]`, so a correct `"properties": {}` comes
- * back out as `"properties": []` — rejected by strict validators ("properties
- * must be an object"). A no-input tool publishes the minimal `{"type":
- * "object"}` and leaves `properties`/`required` off entirely.
+ * SPEC §3.1 + §11.1.3: Streamable HTTP /mcp endpoint. Every registry entry
+ * is registered as a native MCP tool. contextloom_health is always present.
  */
 final class ContextLoomServer
 {
     private readonly Server $server;
 
     public function __construct(
-        private readonly HealthTool $healthTool,
+        private readonly HealthRegistry $healthRegistry,
+        private readonly ToolExecutor $toolExecutor,
+        private readonly Registry $registry,
+        private readonly ToolFactory $toolFactory,
+        private readonly NotifyService $notifyService,
         private readonly LoggerInterface $logger,
         string $sessionDir,
     ) {
@@ -53,11 +37,13 @@ final class ContextLoomServer
     }
 
     /**
+     * Handle a single MCP request.
+     *
      * @param iterable<\Psr\Http\Server\MiddlewareInterface>|null $middleware
      */
     public function handle(ServerRequestInterface $request, ?iterable $middleware = null): ResponseInterface
     {
-        $transport = new Server\Transport\StreamableHttpTransport(
+        $transport = new StreamableHttpTransport(
             request: $request,
             logger: $this->logger,
             middleware: $middleware,
@@ -66,31 +52,62 @@ final class ContextLoomServer
         return $this->server->run($transport);
     }
 
+    /**
+     * Get the current list of registered tool names (for validation + health).
+     *
+     * @return list<string>
+     */
+    public function getToolNames(): array
+    {
+        $tools = ['contextloom_health'];
+        foreach ($this->registry->getEntries() as $entry) {
+            $tools[] = $entry->name;
+        }
+
+        return $tools;
+    }
+
     private function build(string $sessionDir): Server
     {
-        return Server::builder()
+        // Load registry entries before building tools
+        $this->registry->load();
+
+        $builder = Server::builder()
             ->setServerInfo('context-loom', '0.1.0-dev')
-            ->setCapabilities(new ServerCapabilities(
-                tools: true,
-                resources: false,
-                prompts: false,
-                logging: false,
-            ))
-            ->setSession(new FileSessionStore($sessionDir, ttl: 3600))
+            ->setSession(new Server\Session\FileSessionStore($sessionDir, ttl: 3600))
+            // contextloom_health tool — always present, no-input
             ->addTool(
                 handler: function (): array {
-                    return ($this->healthTool)();
+                    return (new HealthTool($this->healthRegistry))();
                 },
                 name: 'contextloom_health',
                 title: 'Context Loom health',
                 description: 'Reports Context Loom server health: overall status and per-provider connectivity. Use this to check that the server and its backends are reachable.',
-                // Deliberately minimal — no `properties`/`required`: a no-input
-                // tool needs neither, and any empty container here would flip
-                // to `[]` in a consumer round trip (see schema convention).
-                inputSchema: [
-                    'type' => 'object',
-                ],
-            )
-            ->build();
+                inputSchema: ['type' => 'object'],
+            );
+
+        // Register all registry entries as MCP tools
+        foreach ($this->registry->getEntries() as $entry) {
+            $toolDef = $this->toolFactory->toToolDefinition($entry);
+
+            $tool = new \Mcp\Schema\Tool(
+                name: $toolDef['name'],
+                title: $toolDef['title'],
+                inputSchema: $toolDef['inputSchema'],
+                description: $toolDef['description'],
+                annotations: null,
+            );
+
+            $handler = new RegistryToolHandler(
+                $entry,
+                $this->toolExecutor,
+                $this->notifyService,
+                $this->logger,
+            );
+
+            $builder = $builder->add($tool, $handler);
+        }
+
+        return $builder->build();
     }
 }
