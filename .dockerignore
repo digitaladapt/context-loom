@@ -8,5 +8,4 @@
 /.php-cs-fixer.php
 /config/reference.php
 /Dockerfile
-/docker/
 compose.yaml
