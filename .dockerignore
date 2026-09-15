@@ -1,0 +1,12 @@
+/.env
+/.env.local
+/.env.*.local
+/var/
+/vendor/
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/.php-cs-fixer.php
+/config/reference.php
+/Dockerfile
+/docker/
+compose.yaml

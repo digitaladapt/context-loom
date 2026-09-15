@@ -1,0 +1,18 @@
+services:
+  context-loom:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    container_name: context-loom
+    expose:
+      - 80
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: '0'
+      APP_SECRET: ${APP_SECRET:-}
+      CONTEXT_LOOM_AUTH: apikey
+      CONTEXT_LOOM_API_KEY: ${CONTEXT_LOOM_API_KEY:-}
+      CONTEXT_LOOM_ALLOWED_HOSTS: ${CONTEXT_LOOM_ALLOWED_HOSTS:-}
+    restart: unless-stopped
