@@ -41,10 +41,10 @@ final class DiscordClient
     /**
      * Send a notification to a Discord webhook.
      *
-     * @param string $webhookUrl The Discord webhook URL
-     * @param string $message The notification message (will be chunked if > 4096)
-     * @param string $level Notification level
-     * @param string $username Optional override for the bot username
+     * @param string              $webhookUrl  The Discord webhook URL
+     * @param string              $message     The notification message (will be chunked if > 4096)
+     * @param string              $level       Notification level
+     * @param string              $username    Optional override for the bot username
      * @param array<string,mixed> $embedFields Optional embed fields
      */
     public function send(
@@ -64,10 +64,10 @@ final class DiscordClient
 
         foreach ($chunks as $index => $chunk) {
             $payload = [
-                'content' => $index === 0 ? $chunk : null,
-                'embeds' => $index === 0 ? [[
-                    'title' => ucfirst($level) . ' Notification',
-                    'description' => $index === 0 ? $chunk : '...',
+                'content' => 0 === $index ? $chunk : null,
+                'embeds' => 0 === $index ? [[
+                    'title' => ucfirst($level).' Notification',
+                    'description' => 0 === $index ? $chunk : '...',
                     'color' => $color,
                     'fields' => empty($embedFields) ? null : $embedFields,
                     'timestamp' => date(\DateTimeImmutable::ATOM),
@@ -78,7 +78,7 @@ final class DiscordClient
                 'username' => $username,
             ];
 
-            $body = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            $body = json_encode($payload, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
 
             try {
                 $request = $this->requestFactory->createRequest('POST', $webhookUrl);
@@ -123,7 +123,7 @@ final class DiscordClient
             $chunk = mb_substr($remaining, 0, $maxChars);
             $lastSpace = strrpos($chunk, ' ');
 
-            if ($lastSpace !== false) {
+            if (false !== $lastSpace) {
                 $chunk = mb_substr($chunk, 0, $lastSpace);
             }
 
@@ -131,7 +131,7 @@ final class DiscordClient
             $remaining = mb_substr($remaining, mb_strlen($chunk) + 1);
         }
 
-        if ($remaining !== '') {
+        if ('' !== $remaining) {
             $chunks[] = $remaining;
         }
 

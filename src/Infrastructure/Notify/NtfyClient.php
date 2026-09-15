@@ -22,18 +22,18 @@ final class NtfyClient
         private readonly ClientInterface $httpClient,
         private readonly RequestFactoryInterface $requestFactory,
         private readonly StreamFactoryInterface $streamFactory,
-        private readonly string $ntfyUrl,
+        private readonly ?string $ntfyUrl = null,
     ) {
     }
 
     /**
      * Send a notification.
      *
-     * @param string $topic The ntfy topic
-     * @param string $message The notification message
-     * @param string $level One of: trace, debug, info, notice, warning, error, critical, emergency
+     * @param string               $topic        The ntfy topic
+     * @param string               $message      The notification message
+     * @param string               $level        One of: trace, debug, info, notice, warning, error, critical, emergency
      * @param array<string,string> $extraHeaders Optional extra headers
-     * @param array<string,mixed> $extraFields Optional ntfy fields (priority, tags, etc.)
+     * @param array<string,mixed>  $extraFields  Optional ntfy fields (priority, tags, etc.)
      */
     public function send(
         string $topic,
@@ -68,9 +68,9 @@ final class NtfyClient
             'fields' => $fields,
             'click' => $extraFields['click'] ?? null,
             'actions' => $extraFields['actions'] ?? null,
-        ], JSON_THROW_ON_ERROR);
+        ], \JSON_THROW_ON_ERROR);
 
-        $url = rtrim($this->ntfyUrl, '/') . '/' . $topic;
+        $url = rtrim($this->ntfyUrl, '/').'/'.$topic;
 
         $headers = array_merge([
             'Content-Type' => 'application/json',

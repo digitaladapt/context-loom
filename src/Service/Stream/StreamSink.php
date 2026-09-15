@@ -45,7 +45,7 @@ final class StreamSink
         $this->collected[] = $chunk;
 
         // Push progress chunks to the client if we have a progressToken
-        if ($chunk->type === ChunkType::PROGRESS && $this->clientGateway !== null && $this->progressToken !== null) {
+        if (ChunkType::PROGRESS === $chunk->type && null !== $this->clientGateway && null !== $this->progressToken) {
             $progressText = $chunk->value;
             if (str_starts_with($progressText, 'progress:')) {
                 $progressText = substr($progressText, 9);
@@ -71,27 +71,27 @@ final class StreamSink
         $stderr = '';
 
         foreach ($this->collected as $chunk) {
-            if ($chunk->type === ChunkType::STDOUT) {
+            if (ChunkType::STDOUT === $chunk->type) {
                 $stdout .= $chunk->value;
-            } elseif ($chunk->type === ChunkType::STDERR) {
+            } elseif (ChunkType::STDERR === $chunk->type) {
                 $stderr .= $chunk->value;
-            } elseif ($chunk->type === ChunkType::META && str_starts_with($chunk->value, 'exit_code:')) {
+            } elseif (ChunkType::META === $chunk->type && str_starts_with($chunk->value, 'exit_code:')) {
                 // Just metadata, don't include in output
             }
         }
 
-        if ($stderr !== '') {
+        if ('' !== $stderr) {
             $hasError = true;
         }
 
-        if ($stdout !== '') {
+        if ('' !== $stdout) {
             $content[] = [
                 'type' => 'text',
                 'text' => $stdout,
             ];
         }
 
-        if ($stderr !== '') {
+        if ('' !== $stderr) {
             $content[] = [
                 'type' => 'text',
                 'text' => "[stderr] {$stderr}",

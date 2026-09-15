@@ -28,7 +28,7 @@ final class HttpExecutor implements ToolExecutorInterface
 
     public function supports(string $type): bool
     {
-        return $type === 'http';
+        return 'http' === $type;
     }
 
     public function execute(RegistryEntry $entry, array $arguments): ToolRun
@@ -54,7 +54,7 @@ final class HttpExecutor implements ToolExecutorInterface
 
         // Build query string
         if (!empty($queryParams)) {
-            $url .= '?' . http_build_query($queryParams);
+            $url .= '?'.http_build_query($queryParams);
         }
 
         // Build headers
@@ -67,7 +67,7 @@ final class HttpExecutor implements ToolExecutorInterface
 
         // Apply auth
         $auth = $entry->http['auth'] ?? null;
-        if ($auth !== null && $auth !== 'none') {
+        if (null !== $auth && 'none' !== $auth) {
             $headers = $this->addAuth($headers, $entry);
         }
 
@@ -77,11 +77,11 @@ final class HttpExecutor implements ToolExecutorInterface
         // Build request body
         $body = null;
         $bodyContent = $entry->http['body'] ?? null;
-        if ($bodyContent !== null) {
+        if (null !== $bodyContent) {
             $body = $this->streamFactory->createStream(
                 $entry->resolveTemplate((string) $bodyContent)
             );
-        } elseif ($method === 'POST' || $method === 'PUT' || $method === 'PATCH') {
+        } elseif ('POST' === $method || 'PUT' === $method || 'PATCH' === $method) {
             // Send empty body for POST/PUT/PATCH if no body specified
             $body = $this->streamFactory->createStream('');
         }
@@ -93,7 +93,7 @@ final class HttpExecutor implements ToolExecutorInterface
             $request = $request->withHeader($name, $value);
         }
 
-        if ($body !== null) {
+        if (null !== $body) {
             $request = $request->withBody($body);
         }
 
@@ -127,7 +127,7 @@ final class HttpExecutor implements ToolExecutorInterface
         return $run;
     }
 
-    private function findArgSpec(RegistryEntry $entry, string $name): ?\App\Domain\InputSpec
+    private function findArgSpec(RegistryEntry $entry, string $name): ?InputSpec
     {
         foreach ($entry->args as $arg) {
             if ($arg->name === $name || $arg->field_name === $name) {
@@ -150,26 +150,26 @@ final class HttpExecutor implements ToolExecutorInterface
                 $apiKey = $entry->http['api_key'] ?? $_ENV[$entry->http['api_key_env'] ?? ''] ?? '';
                 $headerName = $entry->http['api_key_header'] ?? 'X-API-Key';
                 $in = $entry->http['api_key_in'] ?? 'header';
-                if ($in === 'header') {
+                if ('header' === $in) {
                     $prefix = $entry->http['api_key_prefix'] ?? '';
-                    $headers['Authorization'] = $prefix !== ''
-                        ? $prefix . ' ' . $apiKey
+                    $headers['Authorization'] = '' !== $prefix
+                        ? $prefix.' '.$apiKey
                         : $apiKey;
-                } else {
-                    // Will be handled in query params above
-                    // For now, store for later
                 }
+                // Will be handled in query params above
+                // For now, store for later
+
                 break;
 
             case 'bearer':
                 $token = $entry->http['api_key'] ?? $_ENV[$entry->http['api_key_env'] ?? ''] ?? '';
-                $headers['Authorization'] = 'Bearer ' . $token;
+                $headers['Authorization'] = 'Bearer '.$token;
                 break;
 
             case 'basic':
                 $username = $entry->http['api_key'] ?? '';
                 $password = $entry->http['api_key_secret'] ?? '';
-                $headers['Authorization'] = 'Basic ' . base64_encode($username . ':' . $password);
+                $headers['Authorization'] = 'Basic '.base64_encode($username.':'.$password);
                 break;
         }
 

@@ -25,7 +25,7 @@ final class ProcessExecutor implements ToolExecutorInterface
 
     public function supports(string $type): bool
     {
-        return $type === 'process';
+        return 'process' === $type;
     }
 
     public function execute(RegistryEntry $entry, array $arguments): ToolRun
@@ -43,7 +43,7 @@ final class ProcessExecutor implements ToolExecutorInterface
             $pipes
         );
 
-        if (!is_resource($process)) {
+        if (!\is_resource($process)) {
             $run->push(new Chunk(ChunkType::STDERR, "Failed to start process: {$command}"));
             $run->complete();
 
@@ -66,22 +66,22 @@ final class ProcessExecutor implements ToolExecutorInterface
             }
 
             // Read stdout
-            if (feof($pipes[1]) === false) {
+            if (false === feof($pipes[1])) {
                 $chunk = fread($pipes[1], 8192);
                 if (false !== $chunk && '' !== $chunk) {
                     $stdoutAccumulator .= $chunk;
-                    if (strlen($chunk) > 0) {
+                    if ('' !== $chunk) {
                         $run->push(new Chunk(ChunkType::STDOUT, $chunk));
                     }
                 }
             }
 
             // Read stderr
-            if (feof($pipes[2]) === false) {
+            if (false === feof($pipes[2])) {
                 $chunk = fread($pipes[2], 8192);
                 if (false !== $chunk && '' !== $chunk) {
                     $stderrAccumulator .= $chunk;
-                    if (strlen($chunk) > 0) {
+                    if ('' !== $chunk) {
                         $run->push(new Chunk(ChunkType::STDERR, $chunk));
                     }
                 }
@@ -101,7 +101,7 @@ final class ProcessExecutor implements ToolExecutorInterface
         }
 
         foreach ($pipes as $pipe) {
-            if (is_resource($pipe)) {
+            if (\is_resource($pipe)) {
                 fclose($pipe);
             }
         }
@@ -116,7 +116,7 @@ final class ProcessExecutor implements ToolExecutorInterface
 
         $run->complete();
 
-        if ($exitCode !== 0 && '' !== $stderrAccumulator) {
+        if (0 !== $exitCode && '' !== $stderrAccumulator) {
             $this->logger?->warning('Process exited non-zero.', [
                 'entry' => $entry->name,
                 'exit_code' => $exitCode,
@@ -144,7 +144,7 @@ final class ProcessExecutor implements ToolExecutorInterface
                     $argStrings[] = escapeshellarg((string) $value);
                 }
             }
-            $command .= ' ' . implode(' ', $argStrings);
+            $command .= ' '.implode(' ', $argStrings);
         }
 
         return $command;

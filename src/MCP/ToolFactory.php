@@ -60,15 +60,15 @@ final class ToolFactory
     {
         $desc = $entry->description;
 
-        if ($entry->type === 'http') {
+        if ('http' === $entry->type) {
             $method = $entry->http['method'] ?? 'GET';
             $url = $entry->http['url'] ?? '';
-            $desc .= " [HTTP {$method} " . $url . "]";
+            $desc .= " [HTTP {$method} ".$url.']';
 
             if (!empty($entry->requires)) {
-                $desc .= " (requires: " . implode(', ', $entry->requires) . ')';
+                $desc .= ' (requires: '.implode(', ', $entry->requires).')';
             }
-        } elseif ($entry->type === 'process') {
+        } elseif ('process' === $entry->type) {
             $desc .= " [process: {$entry->process}]";
         }
 

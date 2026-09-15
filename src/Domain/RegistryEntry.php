@@ -23,12 +23,12 @@ final class RegistryEntry
     public readonly ?ProbeSpec $probe;
 
     /**
-     * @param string $type    'internal' | 'process' | 'http'
-     * @param list<string> $requires  env vars that must be set
-     * @param list<InputSpec> $args     tool input parameters
-     * @param array<string,mixed>|null $internal  internal handler reference (for type: internal)
-     * @param string|null $process     process executable + args (for type: process)
-     * @param array<string,mixed>|null $http  HTTP config (for type: http)
+     * @param string                   $type     'internal' | 'process' | 'http'
+     * @param list<string>             $requires env vars that must be set
+     * @param list<InputSpec>          $args     tool input parameters
+     * @param array<string,mixed>|null $internal internal handler reference (for type: internal)
+     * @param string|null              $process  process executable + args (for type: process)
+     * @param array<string,mixed>|null $http     HTTP config (for type: http)
      */
     public function __construct(
         public readonly string $name,
@@ -53,22 +53,18 @@ final class RegistryEntry
         $this->probe = $probe;
 
         if (!\in_array($this->type, ['internal', 'process', 'http'], true)) {
-            throw new \InvalidArgumentException(
-                \sprintf('Invalid entry type "%s" for "%s". Must be internal, process, or http.', $this->type, $this->name)
-            );
+            throw new \InvalidArgumentException(\sprintf('Invalid entry type "%s" for "%s". Must be internal, process, or http.', $this->type, $this->name));
         }
 
         // Validate naming: no prefix collisions
         if (str_starts_with($this->name, 'cmd_')) {
-            throw new \InvalidArgumentException(
-                \sprintf('Entry "%s" uses deprecated cmd_ prefix. Drop it.', $this->name)
-            );
+            throw new \InvalidArgumentException(\sprintf('Entry "%s" uses deprecated cmd_ prefix. Drop it.', $this->name));
         }
     }
 
     /**
      * Derive the REST path from the tool name per SPEC §4.5.
-     * Underscores → slashes. e.g. vital_pulse_list_records → /vital-pulse/list-records
+     * Underscores → slashes. e.g. vital_pulse_list_records → /vital-pulse/list-records.
      */
     public function getRestPath(): string
     {
@@ -79,18 +75,18 @@ final class RegistryEntry
         // Convention: {domain}_{verb}_{resource...}
         // First segment is the domain; the rest forms the path
         if (\count($segments) <= 1) {
-            return '/' . $this->name;
+            return '/'.$this->name;
         }
 
         $domainPart = $segments[0];
-        $restParts = array_slice($segments, 1);
+        $restParts = \array_slice($segments, 1);
 
         // First part of the rest may also contain domain-specific grouping
         // e.g. vital_pulse_list_records → domain=vital_pulse, path=/list-records
         // We join remaining parts with dashes, then slash between domain and rest
         $restPath = implode('-', $restParts);
 
-        return '/' . str_replace('_', '-', $domainPart) . '/' . $restPath;
+        return '/'.str_replace('_', '-', $domainPart).'/'.$restPath;
     }
 
     /**
@@ -100,7 +96,7 @@ final class RegistryEntry
     {
         foreach ($this->requires as $envVar) {
             $value = $_ENV[$envVar] ?? getenv($envVar);
-            if ($value === false || $value === '') {
+            if (false === $value || '' === $value) {
                 return false;
             }
         }
@@ -115,11 +111,11 @@ final class RegistryEntry
     {
         return preg_replace_callback(
             '/\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}/',
-            function (array $matches): string {
+            static function (array $matches): string {
                 $envVar = $matches[1];
                 $value = $_ENV[$envVar] ?? getenv($envVar);
 
-                return $value !== false && $value !== '' ? (string) $value : $matches[0];
+                return false !== $value && '' !== $value ? (string) $value : $matches[0];
             },
             $template
         );
@@ -140,7 +136,7 @@ final class RegistryEntry
 
         // Check required args
         foreach ($this->args as $spec) {
-            if ($spec->required && (!isset($arguments[$spec->name]) || $arguments[$spec->name] === null || $arguments[$spec->name] === '')) {
+            if ($spec->required && (!\array_key_exists($spec->name, $arguments) || null === $arguments[$spec->name] || '' === $arguments[$spec->name])) {
                 $errors[] = "Missing required argument: {$spec->name}";
             }
         }

@@ -47,7 +47,7 @@ final class Registry
             return $this;
         }
 
-        $files = glob($this->registryDir . '/*.yaml') ?? [];
+        $files = glob($this->registryDir.'/*.yaml') ?? [];
         sort($files);
 
         foreach ($files as $file) {
@@ -65,7 +65,7 @@ final class Registry
     private function loadFile(string $file): void
     {
         $content = file_get_contents($file);
-        if ($content === false) {
+        if (false === $content) {
             $this->validationErrors[] = "Cannot read {$file}";
             $this->logger?->error('Cannot read registry file.', ['file' => $file]);
 
@@ -115,7 +115,8 @@ final class Registry
 
         // Check requires
         foreach ($dto->requires as $envVar) {
-            if ((\getenv($envVar) === false || \getenv($envVar) === '') && !isset($_ENV[$envVar]) || ($_ENV[$envVar] ?? '') === '') {
+            $value = $_ENV[$envVar] ?? getenv($envVar);
+            if (false === $value || '' === $value || null === $value) {
                 $this->logger?->info('Excluded entry (missing requires).', [
                     'entry' => $name,
                     'missing' => $envVar,
@@ -238,7 +239,7 @@ final class Registry
      */
     public function getEntriesByDomain(string $domain): array
     {
-        return array_values(array_filter($this->entries, fn (RegistryEntry $e) => $e->domain === $domain));
+        return array_values(array_filter($this->entries, static fn (RegistryEntry $e) => $e->domain === $domain));
     }
 
     /**

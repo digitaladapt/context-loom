@@ -61,7 +61,7 @@ final class ToolRun implements \IteratorAggregate, \Countable
         }
         $output = '';
         foreach ($this->chunks as $chunk) {
-            if ($chunk->type === ChunkType::STDOUT) {
+            if (ChunkType::STDOUT === $chunk->type) {
                 $output .= $chunk->value;
             }
         }
@@ -76,7 +76,7 @@ final class ToolRun implements \IteratorAggregate, \Countable
     {
         $output = '';
         foreach ($this->chunks as $chunk) {
-            if ($chunk->type === ChunkType::STDERR) {
+            if (ChunkType::STDERR === $chunk->type) {
                 $output .= $chunk->value;
             }
         }

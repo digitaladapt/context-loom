@@ -15,7 +15,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\HttpClient\HttpClient;
-use Symfony\Component\HttpClient\NoPrivateNetworkHttpClient;
 
 /**
  * contextloom:probe — run connectivity probes on demand.
@@ -48,7 +47,7 @@ final class ProbeCommand extends Command
 
         if ($input->getOption('domain')) {
             $domain = $input->getOption('domain');
-            $entries = array_values(array_filter($entries, fn ($e) => $e->domain === $domain));
+            $entries = array_values(array_filter($entries, static fn ($e) => $e->domain === $domain));
         }
 
         if (empty($entries)) {
@@ -66,8 +65,8 @@ final class ProbeCommand extends Command
         $io->section('Connectivity Probes');
 
         foreach ($entries as $entry) {
-            if ($entry->probe === null || ($entry->probe->level ?? 'connectivity') === 'none') {
-                $io->text(sprintf('  <comment>○</> %s <dim>(probe disabled)</dim>', $entry->name));
+            if (null === $entry->probe || ($entry->probe->level ?? 'connectivity') === 'none') {
+                $io->text(\sprintf('  <comment>○</> %s <dim>(probe disabled)</dim>', $entry->name));
                 $results[$entry->name] = new ProbeResult('unknown');
                 $this->healthRegistry->add([
                     'name' => $entry->name,
@@ -95,7 +94,7 @@ final class ProbeCommand extends Command
                     $emoji = '<fg=yellow>⚠</>';
                 }
 
-                $io->text(sprintf('  %s %s <dim>(HTTP %d)</dim>', $emoji, $entry->name, $statusCode));
+                $io->text(\sprintf('  %s %s <dim>(HTTP %d)</dim>', $emoji, $entry->name, $statusCode));
 
                 $this->healthRegistry->add([
                     'name' => $entry->name,
@@ -103,9 +102,8 @@ final class ProbeCommand extends Command
                     'checkedAt' => new \DateTimeImmutable(),
                 ]);
                 $results[$entry->name] = new ProbeResult($status, new \DateTimeImmutable());
-
             } catch (\Throwable $e) {
-                $io->text(sprintf('  <fg=red>✗</> %s <dim>(%s)</dim>', $entry->name, $e->getMessage()));
+                $io->text(\sprintf('  <fg=red>✗</> %s <dim>(%s)</dim>', $entry->name, $e->getMessage()));
 
                 $this->healthRegistry->add([
                     'name' => $entry->name,

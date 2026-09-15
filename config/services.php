@@ -16,7 +16,6 @@ use App\MCP\ToolFactory;
 use App\Service\HealthRegistry;
 use App\Service\NotifyService;
 use App\Service\Registry\Registry;
-use App\Service\Stream\StreamSink;
 use App\Service\ToolExecutor;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Client\ClientInterface;
@@ -26,7 +25,7 @@ use Psr\Http\Message\StreamFactoryInterface;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
-use function Symfony\Component\DependencyInjection\Loader\Configurator\service_locator;
+use function Symfony\Component\DependencyInjection\Loader\Configurator\tagged_iterator;
 
 return static function (ContainerConfigurator $container): void {
     $services = $container->services();
@@ -44,11 +43,11 @@ return static function (ContainerConfigurator $container): void {
     $services->alias(ResponseFactoryInterface::class, Psr17Factory::class);
 
     // Logging
-    $services->set('logger', \Symfony\Component\HttpKernel\Log\Logger::class);
+    $services->set('logger', Symfony\Component\HttpKernel\Log\Logger::class);
 
     // PSR-18 HTTP client (Symfony HttpClient)
-    $services->alias(ClientInterface::class, \Symfony\Component\HttpClient\Psr18Client::class);
-    $services->set(\Symfony\Component\HttpClient\Psr18Client::class);
+    $services->alias(ClientInterface::class, Symfony\Component\HttpClient\Psr18Client::class);
+    $services->set(Symfony\Component\HttpClient\Psr18Client::class);
 
     // Registry — load entries at boot
     $services->set(Registry::class)
@@ -60,7 +59,7 @@ return static function (ContainerConfigurator $container): void {
     // Tool executor — registers all executors
     $services->set(ToolExecutor::class)
         ->args([
-            \iterator_to_array($services->taggedIterator('App\\Infrastructure\\Executor\\ToolExecutorInterface')),
+            tagged_iterator('App\\Infrastructure\\Executor\\ToolExecutorInterface'),
             service('logger'),
         ]);
 

@@ -17,7 +17,7 @@ interface ToolExecutorInterface
     /**
      * Execute the given entry with the provided arguments.
      *
-     * @return ToolRun The stream of output chunks.
+     * @return ToolRun the stream of output chunks
      */
     public function execute(RegistryEntry $entry, array $arguments): ToolRun;
 }

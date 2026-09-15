@@ -17,7 +17,7 @@ args:
   - name: level
     type: string
     required: false
-    help: Notification level (trace, debug, info, notice, warning, error, critical, emergency). Default: info.
+    help: 'Notification level (trace, debug, info, notice, warning, error, critical, emergency). Default: info.'
   - name: ntfy_topic
     type: string
     required: false

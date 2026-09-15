@@ -35,7 +35,7 @@ final class ToolExecutor
     /**
      * Execute a registry entry.
      *
-     * @return ToolRun The tool run stream.
+     * @return ToolRun the tool run stream
      */
     public function execute(RegistryEntry $entry, array $arguments): ToolRun
     {
@@ -51,8 +51,6 @@ final class ToolExecutor
             }
         }
 
-        throw new \RuntimeException(
-            \sprintf('No executor found for tool type "%s" (entry "%s").', $entry->type, $entry->name)
-        );
+        throw new \RuntimeException(\sprintf('No executor found for tool type "%s" (entry "%s").', $entry->type, $entry->name));
     }
 }

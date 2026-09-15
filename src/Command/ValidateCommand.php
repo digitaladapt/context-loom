@@ -47,22 +47,22 @@ final class ValidateCommand extends Command
         $io->section('Registry Validation');
 
         $io->text([
-            "<info>Registry dir: checked</info>",
-            "<info>Entries loaded: " . count($entries) . "</info>",
-            "<info>Validation errors: " . count($errors) . "</info>",
+            '<info>Registry dir: checked</info>',
+            '<info>Entries loaded: '.\count($entries).'</info>',
+            '<info>Validation errors: '.\count($errors).'</info>',
         ]);
 
         if (!empty($entries)) {
             $io->text('<comment>Registered entries:</comment>');
             foreach ($entries as $entry) {
-                $io->text(sprintf('  <fg=green>✓</> %s (%s) [%s]', $entry->name, $entry->title, $entry->type));
+                $io->text(\sprintf('  <fg=green>✓</> %s (%s) [%s]', $entry->name, $entry->title, $entry->type));
             }
         }
 
         if (!empty($errors)) {
             $io->text('<comment>Validation errors:</comment>');
             foreach ($errors as $error) {
-                $io->text(sprintf('  <fg=red>✗</> %s', $error));
+                $io->text(\sprintf('  <fg=red>✗</> %s', $error));
             }
         }
 

@@ -17,14 +17,10 @@ final class OutputSpec
         public readonly string $format,
     ) {
         if (!\in_array($this->mode, ['block', 'stream'], true)) {
-            throw new \InvalidArgumentException(
-                \sprintf('OutputSpec mode must be "block" or "stream", got "%s".', $this->mode)
-            );
+            throw new \InvalidArgumentException(\sprintf('OutputSpec mode must be "block" or "stream", got "%s".', $this->mode));
         }
         if (!\in_array($this->format, ['json', 'text', 'xml', 'csv'], true)) {
-            throw new \InvalidArgumentException(
-                \sprintf('OutputSpec format must be "json", "text", "xml", or "csv", got "%s".', $this->format)
-            );
+            throw new \InvalidArgumentException(\sprintf('OutputSpec format must be "json", "text", "xml", or "csv", got "%s".', $this->format));
         }
     }
 }

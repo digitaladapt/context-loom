@@ -6,7 +6,6 @@ namespace App\Service;
 
 use App\Domain\Chunk;
 use App\Domain\ChunkType;
-use App\Domain\RegistryEntry;
 use App\Domain\ToolRun;
 use App\Infrastructure\Notify\DiscordClient;
 use App\Infrastructure\Notify\NtfyClient;
@@ -30,10 +29,10 @@ final class NotifyService
     /**
      * Send a notification through configured channels.
      *
-     * @param string $message The notification message
-     * @param array<string> $channels Channels to send to (e.g. ['ntfy', 'discord'])
-     * @param string $level Notification level
-     * @param array<string,mixed> $options Channel-specific options
+     * @param string              $message  The notification message
+     * @param array<string>       $channels Channels to send to (e.g. ['ntfy', 'discord'])
+     * @param string              $level    Notification level
+     * @param array<string,mixed> $options  Channel-specific options
      */
     public function send(
         string $message,
@@ -44,7 +43,7 @@ final class NotifyService
         $run = new ToolRun();
 
         foreach ($channels as $channel) {
-            if ($channel === 'ntfy' && $this->ntfyClient !== null) {
+            if ('ntfy' === $channel && null !== $this->ntfyClient) {
                 $topic = $options['ntfy_topic'] ?? $_ENV['NTFY_TOPIC'] ?? 'general';
                 $ntfyUrl = $options['ntfy_url'] ?? $_ENV['NTFY_URL'] ?? 'https://ntfy.sh';
 
@@ -75,10 +74,10 @@ final class NotifyService
                 ]);
             }
 
-            if ($channel === 'discord' && $this->discordClient !== null) {
+            if ('discord' === $channel && null !== $this->discordClient) {
                 $webhookUrl = $options['discord_webhook'] ?? $_ENV['DISCORD_WEBHOOK'] ?? '';
 
-                if ($webhookUrl === '') {
+                if ('' === $webhookUrl) {
                     $run->push(new Chunk(ChunkType::STDERR, 'No Discord webhook URL configured.'));
                     continue;
                 }

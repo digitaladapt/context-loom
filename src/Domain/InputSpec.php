@@ -22,9 +22,7 @@ final class InputSpec
         public readonly ?array $enum = null,
     ) {
         if (!\in_array($this->type, ['string', 'number', 'integer', 'boolean', 'array', 'object'], true)) {
-            throw new \InvalidArgumentException(
-                \sprintf('Unsupported InputSpec type: "%s". Must be string, number, integer, boolean, array, or object.', $this->type)
-            );
+            throw new \InvalidArgumentException(\sprintf('Unsupported InputSpec type: "%s". Must be string, number, integer, boolean, array, or object.', $this->type));
         }
     }
 
@@ -53,7 +51,7 @@ final class InputSpec
      */
     public function cast(mixed $value): mixed
     {
-        if ($value === null && !$this->required) {
+        if (null === $value && !$this->required) {
             return null;
         }
 
