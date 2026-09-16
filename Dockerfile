@@ -39,6 +39,9 @@ WORKDIR /app
 # Copy the built application from the composer stage
 COPY --from=composer /app /app
 
+# create empty ".env" file, to resolve error
+RUN touch /app/.env
+
 # Copy Docker support files
 COPY docker/Caddyfile /app/docker/Caddyfile
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
