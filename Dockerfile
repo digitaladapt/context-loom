@@ -29,8 +29,7 @@ RUN echo "${APP_VERSION}" > VERSION
 
 # Run composer auto-scripts (cache:clear, assets:install, importmap:install)
 ENV APP_ENV=prod
-RUN composer dump-autoload --no-dev --classmap-authoritative \
-    && composer run-script --no-dev post-install-cmd
+RUN composer dump-autoload --no-dev --classmap-authoritative
 
 # ── Stage 2: Runtime ───────────────────────────────────────────────
 FROM dunglas/frankenphp:1-php8.4 AS runtime
