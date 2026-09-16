@@ -88,6 +88,7 @@ return static function (ContainerConfigurator $container): void {
             service(ServerRequestFactoryInterface::class),
             service(StreamFactoryInterface::class),
             '%env(default::NTFY_URL)%',
+            '%env(default::NTFY_TOKEN)%',
         ]);
 
     $services->set(DiscordClient::class)

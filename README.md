@@ -75,6 +75,7 @@ php bin/console contextloom:serve        # Run HTTP server
 | `CONTEXT_LOOM_ALLOWED_HOSTS` | localhost | Comma-separated hostnames for DNS-rebinding protection |
 | `NTFY_URL` | `https://ntfy.sh` | ntfy server URL |
 | `NTFY_TOPIC` | `general` | Default ntfy topic |
+| `NTFY_TOKEN` | — | ntfy access token (required when the server disallows anonymous publishing) |
 | `PROBE_INTERVAL` | `60` | Probe interval in seconds |
 | `PROBE_TIMEOUT` | `3` | Probe timeout in seconds |
 | `PROBE_ON_BOOT` | `true` | Run probes on boot |

@@ -15,6 +15,11 @@ use Psr\Http\Message\StreamFactoryInterface;
  * Sends notifications via ntfy (ntfy.sh or self-hosted).
  *
  * SPEC §7.3: Level-aware routing, color/tag map.
+ *
+ * When a token is configured (NTFY_TOKEN), it is sent as
+ * `Authorization: Bearer <token>` — ntfy access tokens, matching the
+ * mcp-server NtfyProvider this client ports. Required for servers that
+ * disallow anonymous publishing (auth-default-access: deny-all).
  */
 final class NtfyClient
 {
@@ -23,6 +28,7 @@ final class NtfyClient
         private readonly RequestFactoryInterface $requestFactory,
         private readonly StreamFactoryInterface $streamFactory,
         private readonly ?string $ntfyUrl = null,
+        private readonly ?string $ntfyToken = null,
     ) {
     }
 
@@ -72,10 +78,19 @@ final class NtfyClient
 
         $url = rtrim($this->ntfyUrl, '/').'/'.$topic;
 
-        $headers = array_merge([
+        $headers = [
             'Content-Type' => 'application/json',
             'X-Notify-Priority' => (string) $priority,
-        ], $extraHeaders);
+        ];
+
+        // ntfy access token (Bearer auth) — needed whenever the server
+        // rejects anonymous publishing (e.g. auth-default-access: deny-all).
+        $token = null !== $this->ntfyToken ? trim($this->ntfyToken) : '';
+        if ('' !== $token) {
+            $headers['Authorization'] = 'Bearer '.$token;
+        }
+
+        $headers = array_merge($headers, $extraHeaders);
 
         try {
             $request = $this->requestFactory->createRequest('POST', $url);
