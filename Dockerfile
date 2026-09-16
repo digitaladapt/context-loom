@@ -21,8 +21,16 @@ ARG APP_VERSION=dev
 # Copy the rest of the application
 COPY . .
 
+# create empty ".env" file, to resolve error
+RUN touch /app/.env
+
 # Write the version file (used by SystemController at runtime)
 RUN echo "${APP_VERSION}" > VERSION
+
+# Run composer auto-scripts (cache:clear, assets:install, importmap:install)
+ENV APP_ENV=prod
+RUN composer dump-autoload --no-dev --classmap-authoritative \
+    && composer run-script --no-dev post-install-cmd
 
 # ── Stage 2: Runtime ───────────────────────────────────────────────
 FROM dunglas/frankenphp:1-php8.4 AS runtime
@@ -46,6 +54,9 @@ RUN touch /app/.env
 COPY docker/Caddyfile /app/docker/Caddyfile
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 RUN chmod +x /app/docker/entrypoint.sh
+
+# Create var directory for logs, cache
+RUN mkdir -p /app/var && chown -R nobody:nogroup /app/var
 
 # Environment defaults
 ENV APP_ENV=prod \
