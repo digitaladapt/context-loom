@@ -8,10 +8,12 @@ type: http
 http:
   method: GET
   url: "${VITAL_PULSE_URL}/api/v1/logs"
-  headers:
-    Authorization: "Bearer ${VITAL_PULSE_API_KEY}"
+  ## header is redundant
+  #headers:
+  #  X-API-Key: "${VITAL_PULSE_API_KEY}"
   params: [from_date, to_date]
-  auth: bearer
+  auth: api_key
+  #api_key_header: X-API-Key
   api_key: "${VITAL_PULSE_API_KEY}"
   timeout: 30
 requires:
@@ -35,5 +37,5 @@ streaming: false
 probe:
   level: connectivity
   method: GET
-  url: "${VITAL_PULSE_URL}/health"
+  url: "${VITAL_PULSE_URL}/api/health"
   timeout: 3

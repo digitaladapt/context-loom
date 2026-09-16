@@ -7,16 +7,18 @@ domain: finance
 type: http
 http:
   method: GET
-  url: "${PENNY_TRACK_URL}/api/v1/transactions"
-  headers:
-    Authorization: "Bearer ${PENNY_API_KEY}"
+  url: "${PENNY_TRACK_URL}/api/receipts"
+  ## header is redundant
+  #headers:
+  #  X-API-Key: "${PENNY_TRACK_API_KEY}"
   params: [from_date, to_date]
-  auth: bearer
-  api_key: "${PENNY_API_KEY}"
+  auth: api_key
+  #api_key_header: X-API-Key
+  api_key: "${PENNY_TRACK_API_KEY}"
   timeout: 30
 requires:
   - PENNY_TRACK_URL
-  - PENNY_API_KEY
+  - PENNY_TRACK_API_KEY
 args:
   - name: from_date
     field_name: from_date
@@ -35,5 +37,5 @@ streaming: false
 probe:
   level: connectivity
   method: GET
-  url: "${PENNY_TRACK_URL}/health"
+  url: "${PENNY_TRACK_URL}/api/health"
   timeout: 3
