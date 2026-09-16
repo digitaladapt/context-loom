@@ -14,13 +14,15 @@ WORKDIR /app
 COPY composer.json composer.lock ./
 
 RUN composer install --no-dev --no-interaction --no-scripts
-RUN composer dump-env prod --empty
 
 # Build arg for application version (pass with --build-arg APP_VERSION=v2.0.0 in CI)
 ARG APP_VERSION=dev
 
 # Copy the rest of the application
 COPY . .
+
+# create empty ".env" file, to resolve error
+RUN touch /app/.env
 
 # Write the version file (used by SystemController at runtime)
 RUN echo "${APP_VERSION}" > VERSION
@@ -44,6 +46,9 @@ WORKDIR /app
 
 # Copy the built application from the composer stage
 COPY --from=composer /app /app
+
+# create empty ".env" file, to resolve error
+RUN touch /app/.env
 
 # Copy Docker support files
 COPY docker/Caddyfile /app/docker/Caddyfile
