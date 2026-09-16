@@ -147,7 +147,7 @@ final class HttpExecutor implements ToolExecutorInterface
 
         switch ($auth) {
             case 'api_key':
-                $apiKey = $entry->http['api_key'] ?? $_ENV[$entry->http['api_key_env'] ?? ''] ?? '';
+                $apiKey = $entry->resolveTemplate($entry->http['api_key'] ?? $_ENV[$entry->http['api_key_env'] ?? ''] ?? '');
                 $headerName = $entry->http['api_key_header'] ?? 'X-API-Key';
                 $in = $entry->http['api_key_in'] ?? 'header';
                 if ('header' === $in) {
