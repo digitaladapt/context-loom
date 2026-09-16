@@ -16,6 +16,11 @@ use Psr\Http\Message\StreamFactoryInterface;
  *
  * SPEC §7.3: Level-aware routing, color/tag map.
  *
+ * Uses ntfy's JSON publish format: the request goes to the server's root
+ * URL with `topic` inside the JSON body (NOT to the topic URL — that form
+ * is raw-body publishing and would deliver the JSON blob as the message):
+ * https://docs.ntfy.sh/publish/#publish-as-json
+ *
  * When a token is configured (NTFY_TOKEN), it is sent as
  * `Authorization: Bearer <token>` — ntfy access tokens, matching the
  * mcp-server NtfyProvider this client ports. Required for servers that
@@ -76,7 +81,9 @@ final class NtfyClient
             'actions' => $extraFields['actions'] ?? null,
         ], \JSON_THROW_ON_ERROR);
 
-        $url = rtrim($this->ntfyUrl, '/').'/'.$topic;
+        // JSON publishing: POST to the root URL; the topic travels in the
+        // JSON body (see class docblock).
+        $url = rtrim($this->ntfyUrl, '/');
 
         $headers = [
             'Content-Type' => 'application/json',

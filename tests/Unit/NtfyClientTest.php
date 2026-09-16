@@ -38,6 +38,29 @@ final class NtfyClientTest extends TestCase
         self::assertSame('', $run->getStderr(), 'a 200 response must not produce stderr chunks');
     }
 
+    /**
+     * JSON publishing must POST to the server root URL with the topic in the
+     * body. Posting to `/{topic}` is raw-body publishing — ntfy then delivers
+     * the JSON blob itself as the message text.
+     *
+     * @see https://docs.ntfy.sh/publish/#publish-as-json
+     */
+    public function test_publishes_json_to_root_url_not_topic_url(): void
+    {
+        $httpClient = $this->recordingHttpClient();
+        $factory = new Psr17Factory();
+
+        $client = new NtfyClient($httpClient, $factory, $factory, 'https://ntfy.example.com/', 'tk_testtoken123');
+        $client->send('testtopic', 'hello', 'info');
+
+        $request = $httpClient->requests[0];
+        self::assertSame('https://ntfy.example.com', (string) $request->getUri(), 'JSON publish must go to the root URL');
+
+        $payload = json_decode((string) $request->getBody(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame('testtopic', $payload['topic'], 'the topic must travel in the JSON body');
+        self::assertSame('hello', $payload['message']);
+    }
+
     public function test_sends_no_authorization_header_without_token(): void
     {
         $httpClient = $this->recordingHttpClient();
