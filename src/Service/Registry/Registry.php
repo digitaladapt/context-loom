@@ -9,6 +9,8 @@ use App\Domain\OutputSpec;
 use App\Domain\ProbeSpec;
 use App\Domain\RegistryEntry;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Yaml\Exception\ParseException;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Loads and validates registry YAML files.
@@ -72,11 +74,20 @@ final class Registry
             return;
         }
 
-        $data = yaml_parse($content);
+        $parseError = null;
+        try {
+            $data = Yaml::parse($content);
+        } catch (ParseException $e) {
+            $data = null;
+            $parseError = $e->getMessage();
+        }
 
         if (!\is_array($data)) {
             $this->validationErrors[] = "Invalid YAML in {$file}";
-            $this->logger?->error('Invalid YAML in registry file.', ['file' => $file]);
+            $this->logger?->error('Invalid YAML in registry file.', [
+                'file' => $file,
+                'error' => $parseError ?? 'Document is not a YAML mapping.',
+            ]);
 
             return;
         }
