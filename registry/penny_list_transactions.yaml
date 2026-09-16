@@ -8,13 +8,13 @@ type: http
 http:
   method: GET
   url: "${PENNY_TRACK_URL}/api/receipts"
-  ## header is redundant
-  #headers:
-  #  X-API-Key: "${PENNY_TRACK_API_KEY}"
+  headers:
+    X-API-Key: "${PENNY_TRACK_API_KEY}"
   params: [from_date, to_date]
-  auth: api_key
+  ## using x-api-key header instead of authorization
+  #auth: api_key
   #api_key_header: X-API-Key
-  api_key: "${PENNY_TRACK_API_KEY}"
+  #api_key: "${PENNY_TRACK_API_KEY}"
   timeout: 30
 requires:
   - PENNY_TRACK_URL
