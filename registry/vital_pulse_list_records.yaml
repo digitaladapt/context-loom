@@ -10,23 +10,19 @@ http:
   url: "${VITAL_PULSE_URL}/api/v1/logs"
   headers:
     X-API-Key: "${VITAL_PULSE_API_KEY}"
-  params: [from_date, to_date]
-  ## using x-api-key header instead of authorization
-  #auth: api_key
-  #api_key_header: X-API-Key
-  #api_key: "${VITAL_PULSE_API_KEY}"
+  params: [from, to]
   timeout: 30
 requires:
   - VITAL_PULSE_URL
   - VITAL_PULSE_API_KEY
 args:
-  - name: from_date
-    field_name: from_date
+  - name: from
+    field_name: from
     type: string
     required: true
     help: Start of the date range (ISO 8601, inclusive), e.g. 2025-01-01.
-  - name: to_date
-    field_name: to_date
+  - name: to
+    field_name: to
     type: string
     required: true
     help: End of the date range (ISO 8601, inclusive), e.g. 2025-01-31.
