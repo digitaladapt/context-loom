@@ -56,26 +56,36 @@ final class DiscordClient
     ): ToolRun {
         $run = new ToolRun();
 
-        // Chunk the message at 4096 chars (Discord limit)
+        // Chunk the message at 4096 chars — the embed description limit.
+        // The text travels in the embed only; `content` must stay absent:
+        // Discord renders both when present (duplicated text) and rejects
+        // payloads where both are empty (50006 "empty message").
         $chunks = $this->chunkMessage($message, 4096);
+        $total = \count($chunks);
 
         $color = self::COLOR_MAP[$level] ?? 0x3498DB;
         $username = $username ?? 'Context Loom';
+        $title = ucfirst($level).' Notification';
 
         foreach ($chunks as $index => $chunk) {
+            $embed = [
+                'title' => $total > 1 ? \sprintf('%s (%d/%d)', $title, $index + 1, $total) : $title,
+                'description' => $chunk,
+                'color' => $color,
+            ];
+
+            if (0 === $index) {
+                $embed['timestamp'] = date(\DateTimeImmutable::ATOM);
+                $embed['footer'] = ['text' => 'Context Loom'];
+
+                if ([] !== $embedFields) {
+                    $embed['fields'] = $embedFields;
+                }
+            }
+
             $payload = [
-                'content' => 0 === $index ? $chunk : null,
-                'embeds' => 0 === $index ? [[
-                    'title' => ucfirst($level).' Notification',
-                    'description' => 0 === $index ? $chunk : '...',
-                    'color' => $color,
-                    'fields' => empty($embedFields) ? null : $embedFields,
-                    'timestamp' => date(\DateTimeImmutable::ATOM),
-                    'footer' => [
-                        'text' => 'Context Loom',
-                    ],
-                ]] : null,
                 'username' => $username,
+                'embeds' => [$embed],
             ];
 
             $body = json_encode($payload, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
@@ -107,6 +117,10 @@ final class DiscordClient
      * Split a message into chunks of at most $maxChars characters,
      * breaking at word boundaries when possible.
      *
+     * Splits consume the whitespace at the seam: rejoining the chunks with
+     * a single space at each boundary reconstructs the original message.
+     * Offsets are multibyte-safe (mb_* throughout).
+     *
      * @return list<string>
      */
     private function chunkMessage(string $message, int $maxChars): array
@@ -119,16 +133,21 @@ final class DiscordClient
         $remaining = $message;
 
         while (mb_strlen($remaining) > $maxChars) {
-            // Find the last space within the limit
-            $chunk = mb_substr($remaining, 0, $maxChars);
-            $lastSpace = strrpos($chunk, ' ');
+            $splitAt = $maxChars;
 
-            if (false !== $lastSpace) {
-                $chunk = mb_substr($chunk, 0, $lastSpace);
+            // Prefer the last space within the limit so words stay intact;
+            // fall back to a hard split when the window holds no boundary.
+            $lastSpace = mb_strrpos(mb_substr($remaining, 0, $maxChars), ' ');
+            if (false !== $lastSpace && $lastSpace > 0) {
+                $splitAt = $lastSpace;
             }
 
-            $chunks[] = rtrim($chunk);
-            $remaining = mb_substr($remaining, mb_strlen($chunk) + 1);
+            $chunk = rtrim(mb_substr($remaining, 0, $splitAt));
+            if ('' !== $chunk) {
+                $chunks[] = $chunk;
+            }
+
+            $remaining = ltrim(mb_substr($remaining, $splitAt));
         }
 
         if ('' !== $remaining) {
